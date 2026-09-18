@@ -28,8 +28,8 @@ THREAT_ICONS = {
     THREAT_RECON: "mdi:drone",
     THREAT_MISSILE: "mdi:rocket-launch",
     THREAT_BALLISTIC: "mdi:rocket",
-    THREAT_KAB: "mdi:airplane-bomb",
-    THREAT_MIG31K: "mdi:fighter-jet",
+    THREAT_KAB: "mdi:bomb",
+    THREAT_MIG31K: "mdi:airplane-alert",
     "fpv": "mdi:crosshairs-gps",
 }
 ICON_UNKNOWN_THREAT = "mdi:crosshairs-gps"

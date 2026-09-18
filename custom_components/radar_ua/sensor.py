@@ -212,7 +212,7 @@ async def async_setup_entry(
                 region_key,
                 "kab",
                 "kab",
-                "mdi:airplane-bomb",
+                "mdi:bomb",
                 lambda coordinator_, region: _counts_value(
                     region.get("counts"), "kab"
                 ),
@@ -223,7 +223,7 @@ async def async_setup_entry(
                 region_key,
                 "mig31k",
                 "mig31k",
-                "mdi:fighter-jet",
+                "mdi:airplane-alert",
                 lambda coordinator_, region: _counts_value(
                     region.get("counts"), "mig31k"
                 ),

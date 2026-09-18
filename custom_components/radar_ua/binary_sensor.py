@@ -21,7 +21,7 @@ from .filters import raion_alerts, region_threats
 from .raions import REGION_NAMES_UK
 
 ICON_ALERT = "mdi:alert-rhombus"
-ICON_ADVISORY = "mdi:fighter-jet"
+ICON_ADVISORY = "mdi:airplane-alert"
 ICON_RAION_ALERT = "mdi:map-marker-alert-outline"
 ICON_UKRAINE_ALERTS = "mdi:map-marker-alert"
 
