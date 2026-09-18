@@ -15,7 +15,6 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import RadarUaApiClient, RadarUaApiError
 from .raions import RAIONS, REGION_NAMES_UK  # noqa: F401  (re-exported)
 from .const import (
-    CONF_CITY,
     CONF_RAION,
     CONF_REGION,
     CONF_SCAN_INTERVAL,
@@ -114,7 +113,7 @@ class RadarUaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_raions(self, user_input: dict[str, Any] | None = None):
-        """Handle the second step: raion / city for the chosen oblast."""
+        """Handle the second step: raion for the chosen oblast."""
         region = self._region or ""
         raions = RAIONS.get(region, [])
 
@@ -130,7 +129,6 @@ class RadarUaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 data={
                     CONF_REGION: region,
                     CONF_RAION: raion,
-                    CONF_CITY: (user_input.get(CONF_CITY) or "").strip() or None,
                 },
                 # Defaults for the options flow: without them HA opens the
                 # options dialog right after the config entry is created
@@ -147,8 +145,7 @@ class RadarUaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             schema[vol.Optional(CONF_RAION, default=RAION_SKIP_CHOICE)] = vol.In(
                 _raion_options(raions)
             )
-        # Kyiv and Sevastopol have no raions: only the city field is shown.
-        schema[vol.Optional(CONF_CITY)] = cv.string
+        # Kyiv and Sevastopol have no raions: nothing else is shown.
 
         return self.async_show_form(
             step_id="raions",

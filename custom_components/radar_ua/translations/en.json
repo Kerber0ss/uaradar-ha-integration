@@ -12,8 +12,7 @@
         "title": "Radar UA — {region}",
         "description": "Pick a raion from the list or enter it manually. You can also skip the raion and specify a city only.",
         "data": {
-          "raion": "Select a raion",
-          "city": "City (optional)"
+          "raion": "Select a raion"
         }
       }
     },

@@ -10,9 +10,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/Kerber0ss/uaradar-ha-integration/issues",
   "requirements": [],
-<<<<<<< HEAD
-  "version": "1.5.2"
-=======
-  "version": "1.5.1"
->>>>>>> parent of 533092b (Revert "Bump version to 1.5.1")
+"version": "1.5.3"
 }
