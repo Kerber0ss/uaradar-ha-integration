@@ -17,7 +17,6 @@ from .raions import RAIONS
 from .const import (
     CONF_CITY,
     CONF_RAION,
-    CONF_RAION_CUSTOM,
     CONF_REGION,
     CONF_SCAN_INTERVAL,
     CONF_UKRAINE_OVERVIEW,
@@ -25,7 +24,6 @@ from .const import (
     DEFAULT_UNAVAILABLE_AFTER,
     DOMAIN,
     MIN_SCAN_INTERVAL,
-    RAION_FREE_CHOICE,
     REGION_OTHER,
 )
 
@@ -90,10 +88,9 @@ def _region_options(meta_regions: list[str]) -> dict[str, str]:
 
 
 def _raion_options(raions: list[str]) -> dict[str, str]:
-    """Build the raion-step dropdown: skip, manual entry, then raions."""
+    """Build the raion-step dropdown: skip choice, then raions."""
     options: dict[str, str] = {
         RAION_SKIP_CHOICE: "— Пропустити —",
-        RAION_FREE_CHOICE: "Інший (ввести вручну)",
     }
     options.update({raion: raion for raion in sorted(raions, key=_uk_sort_key)})
     return options
@@ -159,10 +156,9 @@ class RadarUaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             raion: str | None = None
             if raions:
                 raion = user_input.get(CONF_RAION)
-                if raion == RAION_FREE_CHOICE:
-                    raion = (user_input.get(CONF_RAION_CUSTOM) or "").strip() or None
-                else:
-                    raion = (raion or "").strip() or None
+                raion = (raion or "").strip() or None
+                if raion == RAION_SKIP_CHOICE:
+                    raion = None
             return self.async_create_entry(
                 title=f"Radar UA {REGION_NAMES_UK.get(region, region)}",
                 data={
@@ -174,11 +170,10 @@ class RadarUaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         schema: dict[vol.Marker, Any] = {}
         if raions:
-            # Static raion list: dropdown with skip / manual-entry choices.
+            # Static raion list: dropdown with a skip choice.
             schema[vol.Optional(CONF_RAION, default=RAION_SKIP_CHOICE)] = vol.In(
                 _raion_options(raions)
             )
-            schema[vol.Optional(CONF_RAION_CUSTOM)] = cv.string
         # Kyiv and Sevastopol have no raions: only the city field is shown.
         schema[vol.Optional(CONF_CITY)] = cv.string
 
