@@ -17,10 +17,12 @@ from .const import ATTR_UPDATED
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_RAION,
     LEVEL_GREEN,
     LEVEL_RED,
     LEVEL_YELLOW,
 )
+from .filters import raion_alerts
 from .coordinator import RadarUaDataUpdateCoordinator
 from .entity import RadarUaEntity
 
@@ -48,7 +50,11 @@ class RadarUaSensor(RadarUaEntity, SensorEntity):
 
 
 class RadarUaLevelSensor(RadarUaSensor):
-    """Alert level of the region: red / yellow / green."""
+    """Alert level of the region: red / yellow / green.
+
+    If a raion is configured in the entry, the level reflects the raion only:
+    red while the raion is under alert, green otherwise.
+    """
 
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = [LEVEL_RED, LEVEL_YELLOW, LEVEL_GREEN]
@@ -59,19 +65,28 @@ class RadarUaLevelSensor(RadarUaSensor):
         coordinator: RadarUaDataUpdateCoordinator,
         entry: ConfigEntry,
         region_key: str,
+        raion: str | None = None,
     ) -> None:
-        """Initialize the level sensor for region_key."""
+        """Initialize the level sensor for region_key (optionally raion-scoped)."""
         super().__init__(coordinator, entry, region_key, "level")
+        self._raion = raion
 
     @property
     def native_value(self) -> str | None:
         """Return the machine level value (translated via options)."""
+        if self._raion:
+            # Raion-scoped: red only while the raion itself is under alert.
+            return (
+                LEVEL_RED
+                if raion_alerts(self.coordinator.data, self.region_key, self._raion)
+                else LEVEL_GREEN
+            )
         return self.region_data.get("level")
 
     @property
     def icon(self) -> str | None:
         """Level-dependent icon."""
-        return ICON_LEVEL.get(self.region_data.get("level"), "mdi:radar")
+        return ICON_LEVEL.get(self.native_value, "mdi:radar")
 
 
 class RadarUaAlertSinceSensor(RadarUaSensor):
@@ -86,14 +101,20 @@ class RadarUaAlertSinceSensor(RadarUaSensor):
         coordinator: RadarUaDataUpdateCoordinator,
         entry: ConfigEntry,
         region_key: str,
+        raion: str | None = None,
     ) -> None:
-        """Initialize the alert_since sensor for region_key."""
+        """Initialize the alert_since sensor for region_key (optionally raion-scoped)."""
         super().__init__(coordinator, entry, region_key, "alert_since")
+        self._raion = raion
 
     @property
     def native_value(self) -> datetime | None:
         """Return the parsed alert_since timestamp, or None."""
-        raw = self.region_data.get("alert_since")
+        if self._raion:
+            matched = raion_alerts(self.coordinator.data, self.region_key, self._raion)
+            raw = matched[0].get("since") if matched else None
+        else:
+            raw = self.region_data.get("alert_since")
         if not isinstance(raw, str):
             return None
         parsed = dt_util.parse_datetime(raw)
@@ -171,8 +192,8 @@ async def async_setup_entry(
 
     async_add_entities(
         [
-            RadarUaLevelSensor(coordinator, entry, region_key),
-            RadarUaAlertSinceSensor(coordinator, entry, region_key),
+            RadarUaLevelSensor(coordinator, entry, region_key, entry.data.get(CONF_RAION)),
+            RadarUaAlertSinceSensor(coordinator, entry, region_key, entry.data.get(CONF_RAION)),
             RadarUaCountsSensor(
                 coordinator,
                 entry,
