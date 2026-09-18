@@ -13,7 +13,9 @@ PLATFORMS = [
 ]
 
 CONF_REGION = "region"  # ключ региона из API meta
-CONF_RAION = "raion"  # свободный текст, опционально
+CONF_RAION = "raion"  # select с известными районами или свободный текст
+CONF_RAION_CUSTOM = "raion_custom"  # ручной ввод района, когда raion == "__free__"
+RAION_FREE_CHOICE = "__free__"  # значение select'а района = «ввести вручную»
 CONF_CITY = "city"  # свободный текст, опционально
 CONF_SCAN_INTERVAL = "scan_interval"  # секунд, default 10, min 5
 CONF_UKRAINE_OVERVIEW = "ukraine_overview"  # bool, default True

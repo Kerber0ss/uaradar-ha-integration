@@ -16,6 +16,7 @@ from .api import RadarUaApiClient, RadarUaApiError
 from .const import (
     CONF_CITY,
     CONF_RAION,
+    CONF_RAION_CUSTOM,
     CONF_REGION,
     CONF_SCAN_INTERVAL,
     CONF_UKRAINE_OVERVIEW,
@@ -23,13 +24,26 @@ from .const import (
     DEFAULT_UNAVAILABLE_AFTER,
     DOMAIN,
     MIN_SCAN_INTERVAL,
+    RAION_FREE_CHOICE,
     REGION_OTHER,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
+# Ukrainian collation order for sorting dropdown options.
+_UK_ALPHABET = "абвгґдеєжзиіїйклмнопрстуфхцчшщьюя’'"
+
+
+def _uk_sort_key(text: str) -> tuple[int, ...]:
+    """Sort key that follows the Ukrainian alphabet order."""
+    return tuple(
+        _UK_ALPHABET.index(ch) if ch in _UK_ALPHABET else 1000 + ord(ch)
+        for ch in text.lower()
+    )
+
+
 # Ukrainian display names for region keys (from API meta).
-# Used for sorting the dropdown; Ukrainian names are shown in strings/translations.
+# Used both as dropdown labels (vol.In({key: label})) and for sorting.
 REGION_NAMES_UK: dict[str, str] = {
     "cherkaska": "Черкаська область",
     "chernihivska": "Чернігівська область",
@@ -61,19 +75,58 @@ REGION_NAMES_UK: dict[str, str] = {
 }
 
 
-def _sorted_region_keys(meta_regions: list[str]) -> list[str]:
-    """Region keys without "other", sorted by Ukrainian name."""
-    keys = [k for k in meta_regions if k != REGION_OTHER]
-    return sorted(keys, key=lambda k: REGION_NAMES_UK.get(k, k))
-
-
-def _region_schema(meta_regions: list[str]) -> dict[vol.Marker, Any]:
-    keys = _sorted_region_keys(meta_regions)
-    return {
-        vol.Required(CONF_REGION): vol.In(keys),
-        vol.Optional(CONF_RAION): cv.string,
-        vol.Optional(CONF_CITY): cv.string,
+def _region_options(meta_regions: list[str]) -> dict[str, str]:
+    """Region key -> Ukrainian label, without "other", sorted by Ukrainian name."""
+    options = {
+        key: REGION_NAMES_UK.get(key, key)
+        for key in meta_regions
+        if key != REGION_OTHER
     }
+    return dict(sorted(options.items(), key=lambda item: _uk_sort_key(item[1])))
+
+
+def _extract_districts(situation: dict[str, Any]) -> list[str]:
+    """Collect unique, non-empty district names from all threats.
+
+    Threats may live in a top-level ``threats[]`` or under
+    ``regions[key].threats[]`` — handle both shapes.
+    """
+    threats: list[Any] = list(situation.get("threats") or [])
+    regions = situation.get("regions")
+    if isinstance(regions, dict):
+        for region_obj in regions.values():
+            if isinstance(region_obj, dict):
+                threats.extend(region_obj.get("threats") or [])
+    districts: set[str] = set()
+    for threat in threats:
+        if isinstance(threat, dict):
+            district = threat.get("district")
+            if isinstance(district, str) and district.strip():
+                districts.add(district.strip())
+    return sorted(districts, key=_uk_sort_key)
+
+
+def _region_schema(
+    meta_regions: list[str], districts: list[str]
+) -> dict[vol.Marker, Any]:
+    """Build the user-step schema.
+
+    Regions: dropdown with Ukrainian labels. Raions: dropdown of known
+    district names (from the situation payload) plus a manual-entry choice;
+    falls back to a plain text field when the district list is unavailable.
+    """
+    schema: dict[vol.Marker, Any] = {
+        vol.Required(CONF_REGION): vol.In(_region_options(meta_regions))
+    }
+    if districts:
+        raion_options = {district: district for district in districts}
+        raion_options[RAION_FREE_CHOICE] = "Інший (ввести вручну)"
+        schema[vol.Optional(CONF_RAION)] = vol.In(raion_options)
+        schema[vol.Optional(CONF_RAION_CUSTOM)] = cv.string
+    else:
+        schema[vol.Optional(CONF_RAION)] = cv.string
+    schema[vol.Optional(CONF_CITY)] = cv.string
+    return schema
 
 
 class RadarUaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -84,6 +137,7 @@ class RadarUaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         """Initialize the flow."""
         self._meta_regions: list[str] = []
+        self._districts: list[str] = []
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
         """Handle the initial step: region / raion / city."""
@@ -100,22 +154,37 @@ class RadarUaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         except RadarUaApiError:
             errors["base"] = "cannot_connect"
 
+        # Collect known raion (district) names from the situation payload.
+        # Failure here only disables the dropdown; a text field is shown instead.
+        if not self._districts:
+            try:
+                situation = await client.async_get_situation()
+                self._districts = _extract_districts(situation)
+            except RadarUaApiError as err:
+                _LOGGER.debug("Could not load district list: %s", err)
+
         if user_input is not None and not errors:
             if user_input.get(CONF_REGION) not in meta_regions:
                 errors["base"] = "invalid_region"
             else:
+                region = user_input[CONF_REGION]
+                raion = user_input.get(CONF_RAION)
+                if raion == RAION_FREE_CHOICE:
+                    raion = (user_input.get(CONF_RAION_CUSTOM) or "").strip() or None
+                else:
+                    raion = (raion or "").strip() or None
                 return self.async_create_entry(
-                    title=f"Radar UA {user_input[CONF_REGION]}",
+                    title=f"Radar UA {REGION_NAMES_UK.get(region, region)}",
                     data={
-                        CONF_REGION: user_input[CONF_REGION],
-                        CONF_RAION: user_input.get(CONF_RAION) or None,
-                        CONF_CITY: user_input.get(CONF_CITY) or None,
+                        CONF_REGION: region,
+                        CONF_RAION: raion,
+                        CONF_CITY: (user_input.get(CONF_CITY) or "").strip() or None,
                     },
                 )
 
         schema: dict[vol.Marker, Any] = {}
         if meta_regions:
-            schema = _region_schema(meta_regions)
+            schema = _region_schema(meta_regions, self._districts)
         else:
             # Could not load meta: keep a text field so the user can retry
             # with manual input; validation against meta will fail politely.
