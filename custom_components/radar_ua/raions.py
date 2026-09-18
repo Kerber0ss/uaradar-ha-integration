@@ -202,3 +202,37 @@ RAIONS: dict[str, list[str]] = {
         "Коростенський район",
     ],
 }
+
+
+# Ukrainian display names for region keys (from API meta).
+# Single source of truth: used by the config flow (dropdown labels) and by
+# entity.py (device name "Radar UA <назва області>").
+REGION_NAMES_UK: dict[str, str] = {
+    "cherkaska": "Черкаська область",
+    "chernihivska": "Чернігівська область",
+    "chernivetska": "Чернівецька область",
+    "crimea": "АР Крим",
+    "dnipropetrovska": "Дніпропетровська область",
+    "donetska": "Донецька область",
+    "ivano-frankivska": "Івано-Франківська область",
+    "kharkivska": "Харківська область",
+    "khersonska": "Херсонська область",
+    "khmelnytska": "Хмельницька область",
+    "kirovohradska": "Кіровоградська область",
+    "kyiv-city": "Київ",
+    "kyivska": "Київська область",
+    "luhanska": "Луганська область",
+    "lvivska": "Львівська область",
+    "mykolaivska": "Миколаївська область",
+    "odeska": "Одеська область",
+    "poltavska": "Полтавська область",
+    "rivnenska": "Рівненська область",
+    "sevastopol": "Севастополь",
+    "sumska": "Сумська область",
+    "ternopilska": "Тернопільська область",
+    "vinnytska": "Вінницька область",
+    "volynska": "Волинська область",
+    "zakarpatska": "Закарпатська область",
+    "zaporizka": "Запорізька область",
+    "zhytomyrska": "Житомирська область",
+}

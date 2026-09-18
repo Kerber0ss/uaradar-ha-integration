@@ -29,10 +29,9 @@
     "step": {
       "init": {
         "title": "Radar UA — options",
-        "description": "Polling interval and Ukraine overview entities. Entities become unavailable when data is older than {unavailable_after} s.",
+        "description": "Polling interval. Entities become unavailable when data is older than {unavailable_after} s.",
         "data": {
-          "scan_interval": "Polling interval (seconds, 5-3600)",
-          "ukraine_overview": "Ukraine-wide overview entities (binary sensors + geo_location)"
+          "scan_interval": "Polling interval (seconds, 5-3600)"
         }
       }
     },
@@ -88,8 +87,8 @@
       "raion_alert": {
         "name": "Raion alert"
       },
-      "overview_alert": {
-        "name": "Alert (overview)"
+      "ukraine_alerts": {
+        "name": "Radar UA: Ukraine alerts"
       }
     },
     "geo_location": {

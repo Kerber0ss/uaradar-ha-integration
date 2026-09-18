@@ -29,10 +29,9 @@
     "step": {
       "init": {
         "title": "Radar UA — налаштування",
-        "description": "Інтервал опитування та оглядові сутності. Сутності стають unavailable, якщо дані старіші за {unavailable_after} с.",
+        "description": "Інтервал опитування. Сутності стають unavailable, якщо дані старіші за {unavailable_after} с.",
         "data": {
-          "scan_interval": "Інтервал опитування (секунди, 5–3600)",
-          "ukraine_overview": "Сутності огляду всієї України (binary sensors + geo_location)"
+          "scan_interval": "Інтервал опитування (секунди, 5–3600)"
         }
       }
     },
@@ -88,8 +87,8 @@
       "raion_alert": {
         "name": "Тривога в районі"
       },
-      "overview_alert": {
-        "name": "Тривога (огляд)"
+      "ukraine_alerts": {
+        "name": "Radar UA: тривоги по Україні"
       }
     },
     "geo_location": {

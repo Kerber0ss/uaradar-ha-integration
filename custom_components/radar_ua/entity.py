@@ -9,8 +9,31 @@ from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import ATTR_ATTRIBUTION, ATTR_FETCH_OK, ATTR_SOURCE_AGE_S, DOMAIN
+from .const import ATTR_ATTRIBUTION, ATTR_FETCH_OK, ATTR_SOURCE_AGE_S, CONF_REGION, DOMAIN
 from .coordinator import RadarUaDataUpdateCoordinator
+from .raions import REGION_NAMES_UK
+
+
+def device_info_for(entry: ConfigEntry) -> DeviceInfo:
+    """Device info for THE single device of a config entry."""
+    return DeviceInfo(
+        identifiers={(DOMAIN, entry.entry_id)},
+        name=device_name_for(entry),
+        manufacturer="Radar UA",
+        entry_type=DeviceEntryType.SERVICE,
+        configuration_url="https://neptun.in.ua/",
+    )
+
+
+def device_name_for(entry: ConfigEntry) -> str:
+    """Ukrainian device name for a config entry: "Radar UA <область>".
+
+    Uses the configured main region of the entry (not the entity's region),
+    so every platform produces the same single device.
+    """
+    main_region = entry.data.get(CONF_REGION) or ""
+    name = REGION_NAMES_UK.get(main_region, main_region)
+    return f"Radar UA {name}" if name else "Radar UA"
 
 
 class RadarUaEntity(CoordinatorEntity[RadarUaDataUpdateCoordinator], Entity):
@@ -36,13 +59,10 @@ class RadarUaEntity(CoordinatorEntity[RadarUaDataUpdateCoordinator], Entity):
         self._attr_unique_id = f"{entry.entry_id}_{region_key}_{key}"
         # Language-independent entity_id (e.g. sensor.radar_ua_sumska_level).
         self._attr_suggested_object_id = f"{DOMAIN}_{region_key}_{key}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=f"Radar UA {region_key}",
-            manufacturer="Radar UA",
-            entry_type=DeviceEntryType.SERVICE,
-            configuration_url="https://neptun.in.ua/",
-        )
+        # ONE device per config entry, named by the configured oblast in
+        # Ukrainian (e.g. "Radar UA Сумська область"). Overview entities of
+        # other regions share this same device.
+        self._attr_device_info = device_info_for(entry)
 
     @property
     def region_data(self) -> dict[str, Any]:

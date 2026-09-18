@@ -6,40 +6,24 @@ from typing import Any
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers import entity_registry
 
 from .const import (
-    ATTR_ATTRIBUTION,
-    ATTR_FETCH_OK,
-    ATTR_SOURCE_AGE_S,
     CONF_RAION,
     CONF_REGION,
-    CONF_UKRAINE_OVERVIEW,
     DOMAIN,
     LEVEL_RED,
     THREAT_MIG31K,
 )
 from .coordinator import RadarUaDataUpdateCoordinator
-from .entity import RadarUaEntity
+from .entity import RadarUaEntity, device_info_for
 from .filters import raion_alerts, region_threats
+from .raions import REGION_NAMES_UK
 
 ICON_ALERT = "mdi:alert-rhombus"
 ICON_ADVISORY = "mdi:fighter-jet"
 ICON_RAION_ALERT = "mdi:alert-outline"
-
-
-def region_device_info(
-    entry: ConfigEntry, region_key: str, region_name: str
-) -> DeviceInfo:
-    """Device info for an overview region (separate per-region device)."""
-    return DeviceInfo(
-        identifiers={(DOMAIN, f"{entry.entry_id}_region_{region_key}")},
-        name=f"Radar UA {region_name}",
-        manufacturer="Radar UA",
-        entry_type=DeviceEntryType.SERVICE,
-        configuration_url="https://neptun.in.ua/",
-    )
+ICON_UKRAINE_ALERTS = "mdi:map-marker-alert"
 
 
 class RadarUaBinarySensor(RadarUaEntity, BinarySensorEntity):
@@ -140,58 +124,72 @@ class RadarUaRaionAlertBinarySensor(RadarUaBinarySensor):
         return attrs
 
 
-class RadarUaOverviewAlertBinarySensor(
-    CoordinatorEntity[RadarUaDataUpdateCoordinator], BinarySensorEntity
-):
-    """Overview alert for one region of Ukraine (disabled by default).
+class RadarUaUkraineAlertsBinarySensor(RadarUaEntity, BinarySensorEntity):
+    """Compact Ukraine-wide overview: on when at least one oblast is red.
 
-    Created for every key of situation.regions (including "other"), except
-    the main region of the instance (which already has a primary sensor).
+    One entity for the whole country (instead of per-region entities).
+    Attributes carry the alert level of every oblast.
     """
 
     _attr_should_poll = False
-    _attr_has_entity_name = True
-    _attr_entity_registry_enabled_default = False
-    _attr_icon = ICON_ALERT
-    _attr_translation_key = "overview_alert"
+    # Friendly name is the full string (no device-name prefix).
+    # _attr_name takes precedence; translation_key is kept as a fallback.
+    _attr_has_entity_name = False
+    _attr_name = "Radar UA: тривоги по Україні"
+    _attr_translation_key = "ukraine_alerts"
+    _attr_icon = ICON_UKRAINE_ALERTS
 
     def __init__(
         self,
         coordinator: RadarUaDataUpdateCoordinator,
         entry: ConfigEntry,
         region_key: str,
-        region_name: str,
     ) -> None:
-        """Initialize the overview sensor for region_key."""
-        super().__init__(coordinator)
-        self._overview_region_key = region_key
-        self._attr_unique_id = f"{entry.entry_id}_overview_{region_key}_alert"
-        self._attr_suggested_object_id = f"{DOMAIN}_overview_{region_key}_alert"
-        self._attr_device_info = region_device_info(entry, region_key, region_name)
+        """Initialize the Ukraine overview sensor."""
+        super().__init__(coordinator, entry, region_key, "ukraine_alerts")
+        self._attr_unique_id = f"{entry.entry_id}_ukraine_alerts"
+        # Deterministic object id: binary_sensor.radar_ua_ukraine_alerts
+        self.entity_id = f"binary_sensor.{DOMAIN}_ukraine_alerts"
+        self._attr_device_info = device_info_for(entry)
 
-    @property
-    def region_data(self) -> dict[str, Any]:
-        """The observed region object from the latest coordinator data."""
-        return self.coordinator.region(self._overview_region_key)
+    async def async_added_to_hass(self) -> None:
+        """Fix the friendly name in the registry (device prefix otherwise)."""
+        await super().async_added_to_hass()
+        ent_reg = entity_registry.async_get(self.hass)
+        reg_entry = ent_reg.async_get(self.entity_id)
+        if reg_entry is not None and reg_entry.name is None:
+            ent_reg.async_update_entity(self.entity_id, name=self._attr_name)
 
     @property
     def is_on(self) -> bool | None:
-        """True while the observed region has a red alert."""
-        return self.region_data.get("level") == LEVEL_RED
+        """True while at least one region of Ukraine has a red alert."""
+        return self._count_red() > 0
+
+    def _levels_by_region(self) -> dict[str, str | None]:
+        """Ukrainian region name -> alert level for every region."""
+        data = self.coordinator.data
+        result: dict[str, str | None] = {}
+        if not isinstance(data, dict):
+            return result
+        for key, obj in (data.get("regions") or {}).items():
+            if not isinstance(obj, dict):
+                continue
+            name = REGION_NAMES_UK.get(key) or obj.get("name") or key
+            level = obj.get("level")
+            result[name] = level if isinstance(level, str) else None
+        return result
+
+    def _count_red(self) -> int:
+        """Number of regions currently under a red alert."""
+        return sum(1 for level in self._levels_by_region().values() if level == LEVEL_RED)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Common diagnostic attributes."""
-        attrs: dict[str, Any] = {}
-        data = self.coordinator.data
-        if isinstance(data, dict):
-            attrs[ATTR_FETCH_OK] = data.get(ATTR_FETCH_OK)
-            attrs[ATTR_SOURCE_AGE_S] = data.get(ATTR_SOURCE_AGE_S)
-            attribution = data.get(ATTR_ATTRIBUTION)
-            if attribution:
-                attrs[ATTR_ATTRIBUTION] = attribution
-        attrs["region_key"] = self._overview_region_key
-        attrs["level"] = self.region_data.get("level")
+        """Alert levels by region and the count of red regions."""
+        attrs = dict(super().extra_state_attributes)
+        levels = self._levels_by_region()
+        attrs["alerts_by_region"] = levels
+        attrs["count_alerts"] = sum(1 for lv in levels.values() if lv == LEVEL_RED)
         return attrs
 
 
@@ -215,22 +213,7 @@ async def async_setup_entry(
             RadarUaRaionAlertBinarySensor(coordinator, entry, region_key, raion)
         )
 
-    if entry.options.get(CONF_UKRAINE_OVERVIEW, True):
-        region_names: dict[str, str] = {}
-        data = coordinator.data
-        if isinstance(data, dict):
-            for key, obj in (data.get("regions") or {}).items():
-                if isinstance(obj, dict):
-                    region_names[key] = obj.get("name") or key
-        # One overview sensor per region of the whole Ukraine (including
-        # "other"), excluding the main region of this instance.
-        for key in sorted(region_names):
-            if key == region_key:
-                continue
-            entities.append(
-                RadarUaOverviewAlertBinarySensor(
-                    coordinator, entry, key, region_names[key]
-                )
-            )
+    # Compact Ukraine-wide overview (single entity for the whole country).
+    entities.append(RadarUaUkraineAlertsBinarySensor(coordinator, entry, region_key))
 
     async_add_entities(entities)

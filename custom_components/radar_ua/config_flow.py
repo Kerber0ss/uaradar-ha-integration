@@ -13,13 +13,12 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import RadarUaApiClient, RadarUaApiError
-from .raions import RAIONS
+from .raions import RAIONS, REGION_NAMES_UK  # noqa: F401  (re-exported)
 from .const import (
     CONF_CITY,
     CONF_RAION,
     CONF_REGION,
     CONF_SCAN_INTERVAL,
-    CONF_UKRAINE_OVERVIEW,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_UNAVAILABLE_AFTER,
     DOMAIN,
@@ -42,39 +41,6 @@ def _uk_sort_key(text: str) -> tuple[int, ...]:
         _UK_ALPHABET.index(ch) if ch in _UK_ALPHABET else 1000 + ord(ch)
         for ch in text.lower()
     )
-
-
-# Ukrainian display names for region keys (from API meta).
-# Used both as dropdown labels (vol.In({key: label})) and for sorting.
-REGION_NAMES_UK: dict[str, str] = {
-    "cherkaska": "Черкаська область",
-    "chernihivska": "Чернігівська область",
-    "chernivetska": "Чернівецька область",
-    "crimea": "АР Крим",
-    "dnipropetrovska": "Дніпропетровська область",
-    "donetska": "Донецька область",
-    "ivano-frankivska": "Івано-Франківська область",
-    "kharkivska": "Харківська область",
-    "khersonska": "Херсонська область",
-    "khmelnytska": "Хмельницька область",
-    "kirovohradska": "Кіровоградська область",
-    "kyiv-city": "Київ",
-    "kyivska": "Київська область",
-    "luhanska": "Луганська область",
-    "lvivska": "Львівська область",
-    "mykolaivska": "Миколаївська область",
-    "odeska": "Одеська область",
-    "poltavska": "Полтавська область",
-    "rivnenska": "Рівненська область",
-    "sevastopol": "Севастополь",
-    "sumska": "Сумська область",
-    "ternopilska": "Тернопільська область",
-    "vinnytska": "Вінницька область",
-    "volynska": "Волинська область",
-    "zakarpatska": "Закарпатська область",
-    "zaporizka": "Запорізька область",
-    "zhytomyrska": "Житомирська область",
-}
 
 
 def _region_options(meta_regions: list[str]) -> dict[str, str]:
@@ -166,6 +132,13 @@ class RadarUaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_RAION: raion,
                     CONF_CITY: (user_input.get(CONF_CITY) or "").strip() or None,
                 },
+                # Defaults for the options flow: without them HA opens the
+                # options dialog right after the config entry is created
+                # (second unwanted popup). With options pre-filled the
+                # entry is complete and no extra dialog is shown.
+                options={
+                    CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
+                },
             )
 
         schema: dict[vol.Marker, Any] = {}
@@ -219,10 +192,6 @@ class RadarUaOptionsFlow(config_entries.OptionsFlow):
                     CONF_SCAN_INTERVAL,
                     default=current.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
                 ): vol.All(vol.Coerce(int), vol.Range(min=MIN_SCAN_INTERVAL, max=3600)),
-                vol.Required(
-                    CONF_UKRAINE_OVERVIEW,
-                    default=current.get(CONF_UKRAINE_OVERVIEW, True),
-                ): cv.boolean,
             }
         )
 
