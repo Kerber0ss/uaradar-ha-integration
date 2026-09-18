@@ -86,9 +86,6 @@
       },
       "raion_alert": {
         "name": "Тривога в районі"
-      },
-      "ukraine_alerts": {
-        "name": "Тривоги по Україні"
       }
     },
     "geo_location": {

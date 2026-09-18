@@ -86,9 +86,6 @@
       },
       "raion_alert": {
         "name": "Raion alert"
-      },
-      "ukraine_alerts": {
-        "name": "Ukraine alerts"
       }
     },
     "geo_location": {

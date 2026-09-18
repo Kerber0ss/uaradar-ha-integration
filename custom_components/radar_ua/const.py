@@ -16,9 +16,7 @@ CONF_REGION = "region"  # ключ региона из API meta
 CONF_RAION = "raion"  # район из статического списка (или None)
 CONF_CITY = "city"  # свободный текст, опционально
 CONF_SCAN_INTERVAL = "scan_interval"  # секунд, default 10, min 5
-CONF_UKRAINE_OVERVIEW = "ukraine_overview"  # deprecated, no longer used;
-# kept only so old saved options don't break. Overview is now one entity
-# (binary_sensor.radar_ua_ukraine_alerts), always created.
+# CONF_UKRAINE_OVERVIEW удалён: обзорные сущности больше не создаются.
 
 ATTR_FETCH_OK = "fetch_ok"
 ATTR_SOURCE_AGE_S = "source_age_s"
