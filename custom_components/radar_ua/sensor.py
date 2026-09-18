@@ -11,7 +11,9 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_UPDATED, EntityCategory, UnitOfTime
+from homeassistant.const import EntityCategory, UnitOfTime
+
+from .const import ATTR_UPDATED,
 from homeassistant.util import dt as dt_util
 
 from .const import (

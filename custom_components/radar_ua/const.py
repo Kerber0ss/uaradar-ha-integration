@@ -21,6 +21,7 @@ CONF_UKRAINE_OVERVIEW = "ukraine_overview"  # bool, default True
 ATTR_FETCH_OK = "fetch_ok"
 ATTR_SOURCE_AGE_S = "source_age_s"
 ATTR_ATTRIBUTION = "attribution"
+ATTR_UPDATED = "updated"  # ATTENTION: удалён из homeassistant.const в новых версиях HA
 ATTR_UNAVAILABLE_AFTER = "unavailable_after_s"
 
 LEVEL_RED = "red"
