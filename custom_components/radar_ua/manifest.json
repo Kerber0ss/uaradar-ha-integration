@@ -1,12 +1,14 @@
 {
   "domain": "radar_ua",
   "name": "Radar UA",
-  "codeowners": ["@Kerber0ss"],
+  "codeowners": [
+    "@Kerber0ss"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/Kerber0ss/uaradar-ha-integration",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/Kerber0ss/uaradar-ha-integration/issues",
   "requirements": [],
-  "version": "1.1.0"
+  "version": "1.1.1"
 }
