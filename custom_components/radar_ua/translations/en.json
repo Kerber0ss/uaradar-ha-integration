@@ -1,0 +1,110 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Radar UA",
+        "description": "Choose an oblast (and optionally a raion/city) to monitor air raid alerts and threats.",
+        "data": {
+          "region": "Oblast",
+          "raion": "Raion (optional, substring match)",
+          "city": "City (optional, substring match)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the data server.",
+      "invalid_region": "That oblast is not in the data source region list."
+    },
+    "abort": {
+      "already_configured": "This oblast is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Radar UA — options",
+        "description": "Polling interval and Ukraine overview entities. Entities become unavailable when data is older than {unavailable_after} s.",
+        "data": {
+          "scan_interval": "Polling interval (seconds, 5-3600)",
+          "ukraine_overview": "Ukraine-wide overview entities (binary sensors + geo_location)"
+        }
+      }
+    },
+    "error": {
+      "invalid_scan_interval": "The interval must be an integer between 5 and 3600 seconds."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "level": {
+        "name": "Alert level",
+        "state": {
+          "red": "red",
+          "yellow": "yellow",
+          "green": "green"
+        }
+      },
+      "alert_since": {
+        "name": "Alert since"
+      },
+      "drones": {
+        "name": "Drones"
+      },
+      "recon": {
+        "name": "Recon drones"
+      },
+      "missiles": {
+        "name": "Missiles"
+      },
+      "kab": {
+        "name": "KAB"
+      },
+      "mig31k": {
+        "name": "MiG-31K"
+      },
+      "total": {
+        "name": "Total threats"
+      },
+      "raid_size": {
+        "name": "Raid size"
+      },
+      "data_age": {
+        "name": "Data age"
+      }
+    },
+    "binary_sensor": {
+      "alert": {
+        "name": "Alert"
+      },
+      "advisory": {
+        "name": "MiG-31K advisory"
+      },
+      "raion_alert": {
+        "name": "Raion alert"
+      },
+      "overview_alert": {
+        "name": "Alert (overview)"
+      }
+    },
+    "geo_location": {
+      "threat": {
+        "name": "Threat"
+      }
+    },
+    "button": {
+      "refresh": {
+        "name": "Refresh"
+      }
+    },
+    "event": {
+      "events": {
+        "name": "Alert events",
+        "event_types": {
+          "alert_started": "Alert started",
+          "alert_ended": "Alert ended",
+          "threat_new": "New threat"
+        }
+      }
+    }
+  }
+}

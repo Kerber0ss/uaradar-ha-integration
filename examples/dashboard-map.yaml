@@ -1,0 +1,104 @@
+# Lovelace-приклад для інтеграції Radar UA (domain: radar_ua)
+#
+# ⚠️ НЕ офіційна система оповіщення! Для безпеки людей покладайтеся на
+# офіційні сирени та застосунок «Повітряна тривога».
+#
+# Джерело даних: джерело даних інтеграції (агрегатор над NEPTUN,
+# https://neptun.in.ua/).
+
+title: Радар UA
+views:
+  # ─────────────────────────────────────────────────────────────
+  # Вид 1: карта України з усіма активними цілями (geo_location
+  # entities інтеграції radar_ua) + всі регіони на одному екрані.
+  # ─────────────────────────────────────────────────────────────
+  - title: Карта загроз
+    path: radar-map
+    type: masonry
+    cards:
+      # Вбудована карта HA показує всі geo_location-сутності інтеграції
+      # (активні цілі по всій Україні; цілі з ознакою areaOnly не малюються).
+      - type: map
+        title: Цілі по Україні
+        geo_location_sources:
+          - radar_ua
+        default_zoom: 6
+        hours_to_show: 0
+
+      # Компактний огляд тривог по регіонах. Обзорні binary_sensor
+      # (radar_ua_<region>_overview_alert) вимкнені за замовчуванням —
+      # увімкніть їх у налаштуваннях сутностей.
+      #
+      # Варіант А — з custom card "auto-entities" (HACS:
+      # https://github.com/thomasloven/lovelace-auto-entities):
+      - type: custom:auto-entities
+        filter:
+          include:
+            - entity_id: binary_sensor.radar_ua_*_overview_alert
+              options:
+                type: custom:template-entity-row
+                state: "{{ '🚨 ТРИВОГА' if config.state == 'on' else '✅ спокій' }}"
+        sort:
+          method: state
+          reverse: true
+        card:
+          type: entities
+          title: Тривоги по областях
+
+      # Варіант Б — без custom-карток, компактний список вручну
+      # (розкоментуйте та підставте потрібні регіони):
+      # - type: entities
+      #   title: Тривоги по областях
+      #   entities:
+      #     - binary_sensor.radar_ua_sumska_overview_alert
+      #     - binary_sensor.radar_ua_poltavska_overview_alert
+      #     - binary_sensor.radar_ua_kyivska_overview_alert
+      #     - binary_sensor.radar_ua_kharkivska_overview_alert
+      #     - binary_sensor.radar_ua_dnipropetrovska_overview_alert
+      #     - binary_sensor.radar_ua_odeska_overview_alert
+      #     - binary_sensor.radar_ua_lvivska_overview_alert
+
+  # ─────────────────────────────────────────────────────────────
+  # Вид 2: детальний огляд обраної області (наприклад, Сумська).
+  # Підставте свої slug-и; імена сутностей: sensor.radar_ua_<region>_<slug>.
+  # ─────────────────────────────────────────────────────────────
+  - title: Сумська область
+    path: sumska
+    type: masonry
+    cards:
+      - type: entities
+        title: Стан
+        entities:
+          - entity: binary_sensor.radar_ua_sumska_alert
+            name: Тривога (область)
+          - entity: binary_sensor.radar_ua_sumska_raion_alert
+            name: Тривога (район)
+          - entity: binary_sensor.radar_ua_sumska_advisory
+            name: MiG-31K / advisоry
+          - entity: sensor.radar_ua_sumska_level
+            name: Рівень
+          - entity: sensor.radar_ua_sumska_alert_since
+            name: Тривога з
+          - entity: sensor.radar_ua_sumska_data_age
+            name: Вік даних
+      - type: entities
+        title: Цілі
+        entities:
+          - entity: sensor.radar_ua_sumska_drones
+            name: БпЛА
+          - entity: sensor.radar_ua_sumska_recon
+            name: Розвідка
+          - entity: sensor.radar_ua_sumska_missiles
+            name: Ракети (крил. + баліст.)
+          - entity: sensor.radar_ua_sumska_kab
+            name: КАБ
+          - entity: sensor.radar_ua_sumska_mig31k
+            name: МіГ-31К
+          - entity: sensor.radar_ua_sumska_total
+            name: Всього цілей
+          - entity: sensor.radar_ua_sumska_raid_size
+            name: Розмір нальоту
+      - type: button
+        name: Оновити зараз
+        icon: mdi:refresh
+        entity: button.radar_ua_sumska_refresh

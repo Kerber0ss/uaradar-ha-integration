@@ -1,0 +1,136 @@
+# Автоматизації сповіщення для інтеграції Radar UA (domain: radar_ua)
+#
+# ⚠️ НЕ офіційна система оповіщення! Для безпеки людей покладайтеся на
+# офіційні сирени та застосунок «Повітряна тривога».
+#
+# Події інтеграції:
+#   radar_ua_alert_started  {region, region_name, since}
+#   radar_ua_alert_ended    {region, region_name}
+#   radar_ua_threat_new     {region, threat_id, type, locality, district}
+
+# ─────────────────────────────────────────────────────────────────
+# 1. Нова тривога в області інстанса → push + TTS-подібне сповіщення
+# ─────────────────────────────────────────────────────────────────
+- id: radar_ua_alert_started_notify
+  alias: "Radar UA: початок тривоги — сповіщення"
+  description: >
+    Сповіщає всіх про повітряну тривогу в області, яку моніторить інстанс
+    Radar UA. Текст сформовано так, щоб його можна було одразу озвучити
+    (TTS) на українській мові.
+  mode: single
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.radar_ua_sumska_alert
+      from: "off"
+      to: "on"
+  condition: []
+  action:
+    - service: notify.notify
+      data:
+        title: "🚨 Повітряна тривога"
+        message: >
+          УВАГА! Повітряна тривога в {{ state_attr(config.entity_id, 'friendly_name')
+          or 'вашому регіоні' }}.
+          {{ states('sensor.radar_ua_sumska_level') == 'red' and 'Рівень небезпеки: червоний.' or '' }}
+          Перейдіть в укриття! Джерело: джерело даних інтеграції / NEPTUN.
+        data:
+          # Для Home Assistant Voice / Android: TTS-подібне відтворення
+          tts_text: >
+            Увага. Повітряна тривога у вашому регіоні.
+            Перейдіть в укриття.
+          push:
+            sound:
+              name: default
+              critical: 1
+              volume: 1.0
+  # Альтернатива через подію (спрацьовує навіть якщо сутність недоступна):
+  # trigger:
+  #   - platform: event
+  #     event_type: radar_ua_alert_started
+  # action:
+  #   - service: notify.notify
+  #     data:
+  #       title: "🚨 Повітряна тривога"
+  #       message: >
+  #         УВАГА! Повітряна тривога в {{ trigger.event.data.region_name }}.
+  #         Перейдіть в укриття!
+
+# ─────────────────────────────────────────────────────────────────
+# 2. Нова ціль (БпЛА / ракета) в районі або місті → точкове сповіщення
+# ─────────────────────────────────────────────────────────────────
+- id: radar_ua_threat_new_notify
+  alias: "Radar UA: нова ціль у районі/місті"
+  description: >
+    Сповіщає про нову цілу, виявлену в області/районі/місті інстанса
+    (подія radar_ua_threat_new).
+  mode: queued
+  max: 10
+  trigger:
+    - platform: event
+      event_type: radar_ua_threat_new
+  condition:
+    # Не шуміти, якщо це повтор того ж типу в межах хвилини — за потреби
+    # додайте власну логіку дедуплікації.
+    - condition: template
+      value_template: "{{ trigger.event.data.type in ['uav', 'recon', 'missile', 'ballistic', 'kab', 'mig31k', 'fpv'] }}"
+  action:
+    - service: notify.notify
+      data:
+        title: >
+          {{ '🚀 Ракетна загроза' if trigger.event.data.type in ['missile', 'ballistic', 'kab', 'mig31k'] else '🛸 БпЛА' }}
+        message: >
+          Нова ціль ({{ trigger.event.data.type }}){% if trigger.event.data.locality %}
+          поблизу {{ trigger.event.data.locality }}{% endif %}{% if trigger.event.data.district %},
+          {{ trigger.event.data.district }}{% endif %}.
+          Дотримуйтеся правил безпеки.
+        data:
+          tts_text: >
+            Увага. Виявлено нову ціль у вашому районі.
+            Дотримуйтеся правил безпеки.
+
+# ─────────────────────────────────────────────────────────────────
+# 3. MiG-31K (advisory): попередження без тривоги — часто перед
+#    пуском «Кинжала». Спрацьовує на binary_sensor *_advisory.
+# ─────────────────────────────────────────────────────────────────
+- id: radar_ua_mig31k_advisory
+  alias: "Radar UA: злетів МіГ-31К"
+  description: >
+    Окреме попередження про злет МіГ-31К (носій ракети «Кинжал»):
+    тривоги ще немає, але ракетна загроза можлива за лічені хвилини.
+  mode: single
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.radar_ua_sumska_advisory
+      from: "off"
+      to: "on"
+  action:
+    - service: notify.notify
+      data:
+        title: "⚠️ МіГ-31К злетів"
+        message: >
+          Зафіксовано злет МіГ-31К. Можливий пуск ракети «Кинжал».
+          Будьте готові до тривоги, тримайтеся поблизу укриття.
+        data:
+          tts_text: >
+            Увага. Злет літака МіГ тридцять один ка.
+            Можливий пуск ракети. Будьте готові до тривоги.
+
+# ─────────────────────────────────────────────────────────────────
+# 4. Відбій тривоги
+# ─────────────────────────────────────────────────────────────────
+- id: radar_ua_alert_ended_notify
+  alias: "Radar UA: відбій тривоги"
+  mode: single
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.radar_ua_sumska_alert
+      from: "on"
+      to: "off"
+      for: "00:05:00"
+  action:
+    - service: notify.notify
+      data:
+        title: "✅ Відбій тривоги"
+        message: >
+          Відбій повітряної тривоги у вашому регіоні.
+          Джерело: джерело даних інтеграції / NEPTUN.
