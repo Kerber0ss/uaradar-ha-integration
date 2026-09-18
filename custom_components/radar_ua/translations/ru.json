@@ -1,0 +1,115 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Radar UA",
+        "description": "Оберіть область для моніторингу повітряних тривог і загроз.",
+        "data": {
+          "region": "Оберіть область"
+        }
+      },
+      "raions": {
+        "title": "Radar UA — {region}",
+        "description": "Оберіть район зі списку або введіть вручну. Можна пропустити район і вказати лише місто.",
+        "data": {
+          "raion": "Оберіть район",
+          "city": "Місто (необов'язково)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Не вдалося підключитися до сервера даних.",
+      "invalid_region": "Такої області немає в списку джерела даних."
+    },
+    "abort": {
+      "already_configured": "Ця область уже налаштована."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Radar UA — налаштування",
+        "description": "Інтервал опитування. Сутності стають unavailable, якщо дані старіші за {unavailable_after} с.",
+        "data": {
+          "scan_interval": "Інтервал опитування (секунди, 5–3600)"
+        }
+      }
+    },
+    "error": {
+      "invalid_scan_interval": "Інтервал має бути цілим числом від 5 до 3600 секунд."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "level": {
+        "name": "Рівень загрози",
+        "state": {
+          "red": "червоний",
+          "yellow": "жовтий",
+          "green": "зелений"
+        }
+      },
+      "alert_since": {
+        "name": "Початок тривоги"
+      },
+      "drones": {
+        "name": "Дрони (БпЛА)"
+      },
+      "recon": {
+        "name": "Розвідувальні БпЛА"
+      },
+      "missiles": {
+        "name": "Ракети"
+      },
+      "kab": {
+        "name": "КАБ"
+      },
+      "mig31k": {
+        "name": "МіГ-31К"
+      },
+      "total": {
+        "name": "Усього цілей"
+      },
+      "raid_size": {
+        "name": "Розмір нальоту"
+      },
+      "data_age": {
+        "name": "Вік даних"
+      }
+    },
+    "binary_sensor": {
+      "alert": {
+        "name": "Тривога в області"
+      },
+      "advisory": {
+        "name": "Злет МіГ-31К"
+      },
+      "raion_alert": {
+        "name": "Тривога в районі"
+      },
+      "ukraine_alerts": {
+        "name": "Тривоги по Україні"
+      }
+    },
+    "geo_location": {
+      "threat": {
+        "name": "Ціль"
+      }
+    },
+    "button": {
+      "refresh": {
+        "name": "Оновити"
+      }
+    },
+    "event": {
+      "events": {
+        "name": "Події",
+        "event_types": {
+          "alert_started": "Початок тривоги",
+          "alert_ended": "Кінець тривоги",
+          "threat_new": "Нова ціль"
+        }
+      }
+    }
+  }
+}
