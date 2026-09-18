@@ -79,7 +79,7 @@ class RadarUaAlertSinceSensor(RadarUaSensor):
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_translation_key = "alert_since"
-    _attr_icon = "mdi:clock-outline"
+    _attr_icon = "mdi:clock-start"
 
     def __init__(
         self,
@@ -133,7 +133,7 @@ class RadarUaDataAgeSensor(RadarUaSensor):
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_native_unit_of_measurement = UnitOfTime.SECONDS
-    _attr_icon = "mdi:timer-outline"
+    _attr_icon = "mdi:clock-outline"
     _attr_translation_key = "data_age"
     # Diagnostic entity: no state_class (excluded from statistics).
 
@@ -234,7 +234,7 @@ async def async_setup_entry(
                 region_key,
                 "total",
                 "total",
-                "mdi:radar",
+                "mdi:crosshairs-gps",
                 lambda coordinator_, region: (
                     region.get("threat_count")
                     if isinstance(region.get("threat_count"), int)
@@ -247,7 +247,7 @@ async def async_setup_entry(
                 region_key,
                 "raid_size",
                 "raid_size",
-                "mdi:group",
+                "mdi:chart-bell-curve",
                 lambda coordinator_, region: (
                     region.get("group_size")
                     if isinstance(region.get("group_size"), int)

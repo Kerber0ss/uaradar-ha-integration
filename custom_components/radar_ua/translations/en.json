@@ -42,7 +42,7 @@
   "entity": {
     "sensor": {
       "level": {
-        "name": "Alert level",
+        "name": "Threat level",
         "state": {
           "red": "red",
           "yellow": "yellow",
@@ -53,7 +53,7 @@
         "name": "Alert since"
       },
       "drones": {
-        "name": "Drones"
+        "name": "Drones (UAV)"
       },
       "recon": {
         "name": "Recon drones"
@@ -79,16 +79,16 @@
     },
     "binary_sensor": {
       "alert": {
-        "name": "Alert"
+        "name": "Region alert"
       },
       "advisory": {
-        "name": "MiG-31K advisory"
+        "name": "MiG-31K takeoff"
       },
       "raion_alert": {
         "name": "Raion alert"
       },
       "ukraine_alerts": {
-        "name": "Radar UA: Ukraine alerts"
+        "name": "Ukraine alerts"
       }
     },
     "geo_location": {
@@ -103,7 +103,7 @@
     },
     "event": {
       "events": {
-        "name": "Alert events",
+        "name": "Events",
         "event_types": {
           "alert_started": "Alert started",
           "alert_ended": "Alert ended",

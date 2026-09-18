@@ -42,7 +42,7 @@
   "entity": {
     "sensor": {
       "level": {
-        "name": "Рівень тривоги",
+        "name": "Рівень загрози",
         "state": {
           "red": "червоний",
           "yellow": "жовтий",
@@ -50,10 +50,10 @@
         }
       },
       "alert_since": {
-        "name": "Тривога з"
+        "name": "Початок тривоги"
       },
       "drones": {
-        "name": "Дрони"
+        "name": "Дрони (БпЛА)"
       },
       "recon": {
         "name": "Розвідувальні БпЛА"
@@ -79,16 +79,16 @@
     },
     "binary_sensor": {
       "alert": {
-        "name": "Тривога"
+        "name": "Тривога в області"
       },
       "advisory": {
-        "name": "МіГ-31К (advisory)"
+        "name": "Злет МіГ-31К"
       },
       "raion_alert": {
         "name": "Тривога в районі"
       },
       "ukraine_alerts": {
-        "name": "Radar UA: тривоги по Україні"
+        "name": "Тривоги по Україні"
       }
     },
     "geo_location": {
@@ -103,7 +103,7 @@
     },
     "event": {
       "events": {
-        "name": "Події тривог",
+        "name": "Події",
         "event_types": {
           "alert_started": "Початок тривоги",
           "alert_ended": "Кінець тривоги",

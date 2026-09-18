@@ -22,7 +22,7 @@ from .raions import REGION_NAMES_UK
 
 ICON_ALERT = "mdi:alert-rhombus"
 ICON_ADVISORY = "mdi:fighter-jet"
-ICON_RAION_ALERT = "mdi:alert-outline"
+ICON_RAION_ALERT = "mdi:map-marker-alert-outline"
 ICON_UKRAINE_ALERTS = "mdi:map-marker-alert"
 
 
@@ -135,7 +135,7 @@ class RadarUaUkraineAlertsBinarySensor(RadarUaEntity, BinarySensorEntity):
     # Friendly name is the full string (no device-name prefix).
     # _attr_name takes precedence; translation_key is kept as a fallback.
     _attr_has_entity_name = False
-    _attr_name = "Radar UA: тривоги по Україні"
+    _attr_name = "Тривоги по Україні"
     _attr_translation_key = "ukraine_alerts"
     _attr_icon = ICON_UKRAINE_ALERTS
 

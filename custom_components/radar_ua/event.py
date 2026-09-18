@@ -37,6 +37,7 @@ class RadarUaEventEntity(RadarUaEntity, EventEntity):
     _attr_should_poll = False
     _attr_event_types = [EVENT_ALERT_STARTED, EVENT_ALERT_ENDED, EVENT_THREAT_NEW]
     _attr_translation_key = "events"
+    _attr_icon = "mdi:bell-ring-outline"
 
     def __init__(
         self,
