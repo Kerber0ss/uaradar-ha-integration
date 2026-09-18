@@ -13,6 +13,7 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import RadarUaApiClient, RadarUaApiError
+from .raions import RAIONS
 from .const import (
     CONF_CITY,
     CONF_RAION,
@@ -29,6 +30,9 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# Raion dropdown value meaning "skip" (no raion filtering).
+RAION_SKIP_CHOICE = ""
 
 # Ukrainian collation order for sorting dropdown options.
 _UK_ALPHABET = "абвгґдеєжзиіїйклмнопрстуфхцчшщьюя’'"
@@ -85,48 +89,14 @@ def _region_options(meta_regions: list[str]) -> dict[str, str]:
     return dict(sorted(options.items(), key=lambda item: _uk_sort_key(item[1])))
 
 
-def _extract_districts(situation: dict[str, Any]) -> list[str]:
-    """Collect unique, non-empty district names from all threats.
-
-    Threats may live in a top-level ``threats[]`` or under
-    ``regions[key].threats[]`` — handle both shapes.
-    """
-    threats: list[Any] = list(situation.get("threats") or [])
-    regions = situation.get("regions")
-    if isinstance(regions, dict):
-        for region_obj in regions.values():
-            if isinstance(region_obj, dict):
-                threats.extend(region_obj.get("threats") or [])
-    districts: set[str] = set()
-    for threat in threats:
-        if isinstance(threat, dict):
-            district = threat.get("district")
-            if isinstance(district, str) and district.strip():
-                districts.add(district.strip())
-    return sorted(districts, key=_uk_sort_key)
-
-
-def _region_schema(
-    meta_regions: list[str], districts: list[str]
-) -> dict[vol.Marker, Any]:
-    """Build the user-step schema.
-
-    Regions: dropdown with Ukrainian labels. Raions: dropdown of known
-    district names (from the situation payload) plus a manual-entry choice;
-    falls back to a plain text field when the district list is unavailable.
-    """
-    schema: dict[vol.Marker, Any] = {
-        vol.Required(CONF_REGION): vol.In(_region_options(meta_regions))
+def _raion_options(raions: list[str]) -> dict[str, str]:
+    """Build the raion-step dropdown: skip, manual entry, then raions."""
+    options: dict[str, str] = {
+        RAION_SKIP_CHOICE: "— Пропустити —",
+        RAION_FREE_CHOICE: "Інший (ввести вручну)",
     }
-    if districts:
-        raion_options = {district: district for district in districts}
-        raion_options[RAION_FREE_CHOICE] = "Інший (ввести вручну)"
-        schema[vol.Optional(CONF_RAION)] = vol.In(raion_options)
-        schema[vol.Optional(CONF_RAION_CUSTOM)] = cv.string
-    else:
-        schema[vol.Optional(CONF_RAION)] = cv.string
-    schema[vol.Optional(CONF_CITY)] = cv.string
-    return schema
+    options.update({raion: raion for raion in sorted(raions, key=_uk_sort_key)})
+    return options
 
 
 class RadarUaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -137,67 +107,85 @@ class RadarUaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         """Initialize the flow."""
         self._meta_regions: list[str] = []
-        self._districts: list[str] = []
+        self._region: str | None = None
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
-        """Handle the initial step: region / raion / city."""
+        """Handle the first step: oblast selection."""
         errors: dict[str, str] = {}
 
-        session = async_get_clientsession(self.hass)
-        client = RadarUaApiClient(session)
-        meta_regions: list[str] = []
-        try:
-            meta = await client.async_get_meta()
-            meta_regions = meta.get("regions") or []
-            if not isinstance(meta_regions, list) or not meta_regions:
-                raise RadarUaApiError("empty regions list")
-        except RadarUaApiError:
-            errors["base"] = "cannot_connect"
-
-        # Collect known raion (district) names from the situation payload.
-        # Failure here only disables the dropdown; a text field is shown instead.
-        if not self._districts:
+        if not self._meta_regions:
+            session = async_get_clientsession(self.hass)
+            client = RadarUaApiClient(session)
             try:
-                situation = await client.async_get_situation()
-                self._districts = _extract_districts(situation)
-            except RadarUaApiError as err:
-                _LOGGER.debug("Could not load district list: %s", err)
+                meta = await client.async_get_meta()
+                meta_regions = meta.get("regions") or []
+                if not isinstance(meta_regions, list) or not meta_regions:
+                    raise RadarUaApiError("empty regions list")
+                self._meta_regions = meta_regions
+            except RadarUaApiError:
+                errors["base"] = "cannot_connect"
 
         if user_input is not None and not errors:
-            if user_input.get(CONF_REGION) not in meta_regions:
+            region = user_input.get(CONF_REGION)
+            if region not in self._meta_regions:
                 errors["base"] = "invalid_region"
             else:
-                region = user_input[CONF_REGION]
-                raion = user_input.get(CONF_RAION)
-                if raion == RAION_FREE_CHOICE:
-                    raion = (user_input.get(CONF_RAION_CUSTOM) or "").strip() or None
-                else:
-                    raion = (raion or "").strip() or None
-                return self.async_create_entry(
-                    title=f"Radar UA {REGION_NAMES_UK.get(region, region)}",
-                    data={
-                        CONF_REGION: region,
-                        CONF_RAION: raion,
-                        CONF_CITY: (user_input.get(CONF_CITY) or "").strip() or None,
-                    },
-                )
+                self._region = region
+                return await self.async_step_raions()
 
-        schema: dict[vol.Marker, Any] = {}
-        if meta_regions:
-            schema = _region_schema(meta_regions, self._districts)
+        if self._meta_regions:
+            schema: dict[vol.Marker, Any] = {
+                vol.Required(CONF_REGION): vol.In(
+                    _region_options(self._meta_regions)
+                )
+            }
         else:
             # Could not load meta: keep a text field so the user can retry
             # with manual input; validation against meta will fail politely.
-            schema = {
-                vol.Required(CONF_REGION): cv.string,
-                vol.Optional(CONF_RAION): cv.string,
-                vol.Optional(CONF_CITY): cv.string,
-            }
+            schema = {vol.Required(CONF_REGION): cv.string}
 
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(schema),
             errors=errors,
+        )
+
+    async def async_step_raions(self, user_input: dict[str, Any] | None = None):
+        """Handle the second step: raion / city for the chosen oblast."""
+        region = self._region or ""
+        raions = RAIONS.get(region, [])
+
+        if user_input is not None:
+            raion: str | None = None
+            if raions:
+                raion = user_input.get(CONF_RAION)
+                if raion == RAION_FREE_CHOICE:
+                    raion = (user_input.get(CONF_RAION_CUSTOM) or "").strip() or None
+                else:
+                    raion = (raion or "").strip() or None
+            return self.async_create_entry(
+                title=f"Radar UA {REGION_NAMES_UK.get(region, region)}",
+                data={
+                    CONF_REGION: region,
+                    CONF_RAION: raion,
+                    CONF_CITY: (user_input.get(CONF_CITY) or "").strip() or None,
+                },
+            )
+
+        schema: dict[vol.Marker, Any] = {}
+        if raions:
+            # Static raion list: dropdown with skip / manual-entry choices.
+            schema[vol.Optional(CONF_RAION, default=RAION_SKIP_CHOICE)] = vol.In(
+                _raion_options(raions)
+            )
+            schema[vol.Optional(CONF_RAION_CUSTOM)] = cv.string
+        # Kyiv and Sevastopol have no raions: only the city field is shown.
+        schema[vol.Optional(CONF_CITY)] = cv.string
+
+        return self.async_show_form(
+            step_id="raions",
+            data_schema=vol.Schema(schema),
+            description_placeholders={"region": REGION_NAMES_UK.get(region, region)},
         )
 
     @staticmethod

@@ -3,10 +3,16 @@
     "step": {
       "user": {
         "title": "Radar UA",
-        "description": "Choose an oblast, raion and city to monitor air raid alerts and threats. The raion can be picked from the list or entered manually.",
+        "description": "Choose an oblast to monitor air raid alerts and threats.",
         "data": {
-          "region": "Select an oblast",
-          "raion": "Select a raion (or enter manually)",
+          "region": "Select an oblast"
+        }
+      },
+      "raions": {
+        "title": "Radar UA — {region}",
+        "description": "Pick a raion from the list or enter it manually. You can also skip the raion and specify a city only.",
+        "data": {
+          "raion": "Select a raion",
           "raion_custom": "Raion (enter manually)",
           "city": "City (optional)"
         }
