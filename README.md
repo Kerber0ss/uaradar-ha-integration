@@ -19,7 +19,7 @@ Data source: [NEPTUN](https://neptun.in.ua/).
 - `binary_sensor.radar_ua_<region>_alert` — alert in the oblast
 - `binary_sensor.radar_ua_<region>_advisory` — MiG-31K takeoff
 - `binary_sensor.radar_ua_<region>_raion_alert` — alert in configured raion
-- `binary_sensor.radar_ua_overview_*` — all-oblast alert overview (disabled by default)
+- `binary_sensor.radar_ua_ukraine_alerts` — compact Ukraine-wide overview (on when any oblast is red; attributes: `alerts_by_region` name→level, `count_alerts`)
 - `geo_location.radar_ua_*` — active threats on the map
 - `button.radar_ua_<region>_refresh` — force refresh
 
