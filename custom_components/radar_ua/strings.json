@@ -100,10 +100,14 @@
     "event": {
       "events": {
         "name": "Події",
-        "event_types": {
-          "alert_started": "Початок тривоги",
-          "alert_ended": "Кінець тривоги",
-          "threat_new": "Нова ціль"
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "alert_started": "Початок тривоги",
+              "alert_ended": "Кінець тривоги",
+              "threat_new": "Нова ціль"
+            }
+          }
         }
       }
     }

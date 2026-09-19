@@ -1,0 +1,11 @@
+refresh:
+  name: Refresh
+  description: Force an immediate refresh of Radar UA data.
+  fields:
+    entry_id:
+      name: Config entry ID
+      description: Optional config entry ID. Leave empty to refresh all Radar UA entries.
+      required: false
+      example: 0123456789abcdef
+      selector:
+        text:

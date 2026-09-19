@@ -100,10 +100,14 @@
     "event": {
       "events": {
         "name": "Events",
-        "event_types": {
-          "alert_started": "Alert started",
-          "alert_ended": "Alert ended",
-          "threat_new": "New threat"
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "alert_started": "Alert started",
+              "alert_ended": "Alert ended",
+              "threat_new": "New threat"
+            }
+          }
         }
       }
     }
