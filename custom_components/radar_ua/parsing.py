@@ -35,6 +35,53 @@ def missiles_count(counts: dict[str, Any] | None) -> int:
     return total
 
 
+def threat_units(threat: dict[str, Any]) -> int:
+    """Return the number represented by one threat, defaulting to one."""
+    if not isinstance(threat, dict):
+        return 0
+    count = threat.get("count")
+    if isinstance(count, (int, float)) and not isinstance(count, bool) and count >= 0:
+        return int(count)
+    return 1
+
+
+def sum_threat_units(
+    threats: list[dict[str, Any]] | None,
+    *types: str,
+) -> int:
+    """Sum threat units, optionally limited to one or more threat types."""
+    if not isinstance(threats, list):
+        return 0
+    return sum(
+        threat_units(threat)
+        for threat in threats
+        if isinstance(threat, dict)
+        and (not types or threat.get("type") in types)
+    )
+
+
+def counts_for_threats(threats: list[dict[str, Any]] | None) -> dict[str, int]:
+    """Build API-compatible type counts from a filtered threat list."""
+    counts = {
+        "uav": 0,
+        "recon": 0,
+        "missile": 0,
+        "ballistic": 0,
+        "kab": 0,
+        "mig31k": 0,
+        "unknown": 0,
+    }
+    if not isinstance(threats, list):
+        return counts
+    for threat in threats:
+        if not isinstance(threat, dict):
+            continue
+        threat_type = threat.get("type")
+        key = threat_type if threat_type in counts else "unknown"
+        counts[key] += threat_units(threat)
+    return counts
+
+
 def threat_advisory(threat: dict[str, Any]) -> bool:
     """True when the threat is a MiG-31K launch warning (type == mig31k)."""
     if not isinstance(threat, dict):

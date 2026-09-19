@@ -17,7 +17,7 @@ from .const import (
 )
 from .coordinator import RadarUaDataUpdateCoordinator
 from .entity import RadarUaEntity, device_info_for
-from .filters import raion_alerts, region_threats
+from .filters import raion_alerts
 from .raions import REGION_NAMES_UK
 
 ICON_ALERT = "mdi:alert-rhombus"
@@ -76,7 +76,7 @@ class RadarUaAdvisoryBinarySensor(RadarUaBinarySensor):
         """True when any active threat in the region is of type mig31k."""
         return any(
             threat.get("type") == THREAT_MIG31K
-            for threat in region_threats(self.coordinator.data, self.region_key)
+            for threat in self.active_threats
         )
 
     @property
@@ -85,7 +85,7 @@ class RadarUaAdvisoryBinarySensor(RadarUaBinarySensor):
         attrs = dict(super().extra_state_attributes)
         attrs["mig31k_ids"] = [
             threat.get("id")
-            for threat in region_threats(self.coordinator.data, self.region_key)
+            for threat in self.active_threats
             if threat.get("type") == THREAT_MIG31K
         ]
         return attrs

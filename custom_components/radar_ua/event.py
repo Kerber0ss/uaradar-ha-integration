@@ -9,16 +9,16 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import callback
 
 from .const import (
-    CONF_CITY,
     CONF_RAION,
     CONF_REGION,
     DOMAIN,
+    LEVEL_GREEN,
     LEVEL_RED,
     THREAT_MIG31K,
 )
 from .coordinator import RadarUaDataUpdateCoordinator
 from .entity import RadarUaEntity
-from .filters import filtered_threats, region_threats
+from .filters import raion_alerts
 
 EVENT_ALERT_STARTED = "alert_started"
 EVENT_ALERT_ENDED = "alert_ended"
@@ -64,11 +64,24 @@ class RadarUaEventEntity(RadarUaEntity, EventEntity):
 
     def _active_threats(self) -> list[dict[str, Any]]:
         """Active threats of the instance (region slice + raion/city filter)."""
-        return filtered_threats(
-            self.coordinator.data,
-            region_threats(self.coordinator.data, self.region_key),
-            self.entry.data.get(CONF_RAION),
-            self.entry.data.get(CONF_CITY),
+        return self.active_threats
+
+    def _scoped_level(
+        self, region_data: dict[str, Any]
+    ) -> tuple[str | None, str | None]:
+        """Return the configured slice level and its alert start time."""
+        raion = self.entry.data.get(CONF_RAION)
+        if raion:
+            matched = raion_alerts(self.coordinator.data, self.region_key, raion)
+            return (
+                LEVEL_RED if matched else LEVEL_GREEN,
+                matched[0].get("since") if matched else None,
+            )
+        level = region_data.get("level")
+        return (
+            (level, region_data.get("alert_since"))
+            if isinstance(level, str)
+            else (None, None)
         )
 
     @callback
@@ -83,7 +96,7 @@ class RadarUaEventEntity(RadarUaEntity, EventEntity):
             return  # keep the previous state on a failed fetch
 
         region_data = self.region_data
-        level = region_data.get("level")
+        level, alert_since = self._scoped_level(region_data)
 
         if not self._primed:
             # First update: seed state without firing events.
@@ -106,7 +119,7 @@ class RadarUaEventEntity(RadarUaEntity, EventEntity):
                         "level": level,
                         "region": self.region_key,
                         "region_name": region_name,
-                        "since": region_data.get("alert_since"),
+                        "since": alert_since,
                     },
                 )
             elif self._prev_level == LEVEL_RED:
@@ -153,4 +166,3 @@ async def async_setup_entry(
     coordinator: RadarUaDataUpdateCoordinator = entry.runtime_data
     region_key: str = entry.data.get(CONF_REGION) or ""
     async_add_entities([RadarUaEventEntity(coordinator, entry, region_key)])
-

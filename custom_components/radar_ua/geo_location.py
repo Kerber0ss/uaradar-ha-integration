@@ -10,6 +10,8 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry
 
 from .const import (
+    CONF_CITY,
+    CONF_RAION,
     CONF_REGION,
     DOMAIN,
     THREAT_BALLISTIC,
@@ -21,7 +23,7 @@ from .const import (
 )
 from .coordinator import RadarUaDataUpdateCoordinator
 from .entity import RadarUaEntity, device_info_for
-from .filters import region_threats
+from .filters import scoped_region_threats
 
 THREAT_ICONS = {
     THREAT_UAV: "mdi:quadcopter",
@@ -135,7 +137,7 @@ class RadarUaGeolocationEvent(RadarUaEntity, GeolocationEvent):
         return next(
             (
                 threat
-                for threat in region_threats(self.coordinator.data, self.region_key)
+                for threat in self.active_threats
                 if str(threat.get("id")) == self._threat_id
             ),
             None,
@@ -157,8 +159,8 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities,
 ) -> None:
-    """Set up geolocation entities for the active threats of the configured
-    oblast (regions[<region_key>].threats).
+    """Set up geolocation entities for active threats in the configured
+    oblast/raion slice.
 
     Entities for the snapshot available at setup are created immediately;
     threats that appear later are added via the platform callback from a
@@ -185,7 +187,12 @@ async def async_setup_entry(
         """Active threats by id, with the region key they were found in."""
         found: dict[str, tuple[dict[str, Any], str]] = {}
         for region_key in region_keys():
-            for threat in region_threats(coordinator.data, region_key):
+            for threat in scoped_region_threats(
+                coordinator.data,
+                region_key,
+                entry.data.get(CONF_RAION),
+                entry.data.get(CONF_CITY),
+            ):
                 threat_id = threat.get("id")
                 if threat_id is None:
                     continue

@@ -83,6 +83,21 @@ class TestRegionThreats:
         assert filters.region_threats(situation, "nonexistent") == []
 
 
+class TestScopedRegionThreats:
+    def test_konotop_only(self, situation):
+        threats = filters.scoped_region_threats(
+            situation, "sumska", "Конотопський район"
+        )
+        assert [threat["id"] for threat in threats] == ["trk_00197710"]
+
+    def test_without_raion_keeps_all_active_threats(self, situation):
+        threats = filters.scoped_region_threats(situation, "sumska", None)
+        assert {threat["id"] for threat in threats} == {
+            "trk_00197710",
+            "trk_00197702",
+        }
+
+
 class TestFilteredThreats:
     def test_match_by_district(self, situation):
         threats = filters.region_threats(situation, "sumska")

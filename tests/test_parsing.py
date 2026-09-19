@@ -36,6 +36,26 @@ class TestMissilesCount:
         assert parsing.missiles_count(counts) == 3
 
 
+class TestThreatCounts:
+    def test_filtered_threat_units(self, situation):
+        threats = [situation["regions"]["sumska"]["threats"][0]]
+        assert parsing.sum_threat_units(threats) == 2
+        assert parsing.sum_threat_units(threats, "uav") == 2
+        assert parsing.sum_threat_units(threats, "mig31k") == 0
+
+    def test_counts_for_filtered_threats(self, situation):
+        threats = [situation["regions"]["sumska"]["threats"][0]]
+        assert parsing.counts_for_threats(threats) == {
+            "uav": 2,
+            "recon": 0,
+            "missile": 0,
+            "ballistic": 0,
+            "kab": 0,
+            "mig31k": 0,
+            "unknown": 0,
+        }
+
+
 class TestAdvisory:
     def test_mig31k_threat_is_advisory(self, situation):
         threat = next(

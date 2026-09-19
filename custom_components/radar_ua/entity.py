@@ -9,8 +9,17 @@ from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import ATTR_ATTRIBUTION, ATTR_FETCH_OK, ATTR_SOURCE_AGE_S, CONF_REGION, DOMAIN
+from .const import (
+    ATTR_ATTRIBUTION,
+    ATTR_FETCH_OK,
+    ATTR_SOURCE_AGE_S,
+    CONF_CITY,
+    CONF_RAION,
+    CONF_REGION,
+    DOMAIN,
+)
 from .coordinator import RadarUaDataUpdateCoordinator
+from .filters import scoped_region_threats
 from .raions import REGION_NAMES_UK
 
 
@@ -68,6 +77,16 @@ class RadarUaEntity(CoordinatorEntity[RadarUaDataUpdateCoordinator], Entity):
     def region_data(self) -> dict[str, Any]:
         """The region object from the latest coordinator data."""
         return self.coordinator.region(self.region_key)
+
+    @property
+    def active_threats(self) -> list[dict[str, Any]]:
+        """Active threats limited to this entry's configured raion/city."""
+        return scoped_region_threats(
+            self.coordinator.data,
+            self.region_key,
+            self.entry.data.get(CONF_RAION),
+            self.entry.data.get(CONF_CITY),
+        )
 
     @property
     def attribution(self) -> str | None:

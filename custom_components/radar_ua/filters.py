@@ -97,3 +97,18 @@ def filtered_threats(
                 continue
         result.append(threat)
     return result
+
+
+def scoped_region_threats(
+    data: dict[str, Any],
+    region_key: str,
+    raion: str | None,
+    city: str | None = None,
+) -> list[dict[str, Any]]:
+    """Return active threats limited to the configured region slice."""
+    return filtered_threats(
+        data,
+        region_threats(data, region_key),
+        raion,
+        city,
+    )

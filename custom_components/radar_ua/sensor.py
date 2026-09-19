@@ -17,6 +17,7 @@ from .const import ATTR_UPDATED
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_CITY,
     CONF_RAION,
     LEVEL_GREEN,
     LEVEL_RED,
@@ -25,6 +26,7 @@ from .const import (
 from .filters import raion_alerts
 from .coordinator import RadarUaDataUpdateCoordinator
 from .entity import RadarUaEntity
+from .parsing import counts_for_threats, sum_threat_units
 
 ICON_LEVEL = {
     LEVEL_RED: "mdi:alert-octagon",
@@ -45,8 +47,19 @@ class RadarUaSensor(RadarUaEntity, SensorEntity):
             attrs[ATTR_UPDATED] = data.get(ATTR_UPDATED)
         counts = self.region_data.get("counts")
         if isinstance(counts, dict):
-            attrs["counts"] = counts
+            attrs["counts"] = (
+                counts_for_threats(self.active_threats)
+                if self._is_scoped
+                else counts
+            )
         return attrs
+
+    @property
+    def _is_scoped(self) -> bool:
+        """Whether this entry has a configured raion or legacy city slice."""
+        return bool(
+            self.entry.data.get(CONF_RAION) or self.entry.data.get(CONF_CITY)
+        )
 
 
 class RadarUaLevelSensor(RadarUaSensor):
@@ -146,7 +159,11 @@ class RadarUaCountsSensor(RadarUaSensor):
     @property
     def native_value(self) -> float | None:
         """Return the computed counter value (None -> unknown)."""
-        return self._value_fn(self.coordinator, self.region_data)
+        region_data = self.region_data
+        if not region_data:
+            return None
+        source = self.active_threats if self._is_scoped else region_data
+        return self._value_fn(self.coordinator, source)
 
 
 class RadarUaDataAgeSensor(RadarUaSensor):
@@ -174,11 +191,39 @@ class RadarUaDataAgeSensor(RadarUaSensor):
         return self.coordinator.data_age_s()
 
 
-def _counts_value(counts: dict[str, Any] | None, *types: str) -> int | None:
-    """Sum of counts for the given threat types; None when no data."""
+def _counts_value(
+    source: list[dict[str, Any]] | dict[str, Any] | None,
+    *types: str,
+) -> int | None:
+    """Sum filtered threat units or an unfiltered API count."""
+    if isinstance(source, list):
+        return sum_threat_units(source, *types)
+    if not isinstance(source, dict):
+        return None
+    counts = source.get("counts")
     if not isinstance(counts, dict):
         return None
-    return sum(int(counts.get(t) or 0) for t in types)
+    return sum(int(counts.get(threat_type) or 0) for threat_type in types)
+
+
+def _total_value(
+    source: list[dict[str, Any]] | dict[str, Any],
+) -> int | None:
+    """Return the filtered threat count or the API region count."""
+    if isinstance(source, list):
+        return len(source)
+    value = source.get("threat_count")
+    return value if isinstance(value, int) else None
+
+
+def _raid_size_value(
+    source: list[dict[str, Any]] | dict[str, Any],
+) -> int | None:
+    """Return the filtered group size or the API region group size."""
+    if isinstance(source, list):
+        return sum_threat_units(source)
+    value = source.get("group_size")
+    return value if isinstance(value, int) else None
 
 
 async def async_setup_entry(
@@ -201,8 +246,8 @@ async def async_setup_entry(
                 "drones",
                 "drones",
                 "mdi:quadcopter",
-                lambda coordinator_, region: _counts_value(
-                    region.get("counts"), "uav"
+                lambda coordinator_, threats: _counts_value(
+                    threats, "uav"
                 ),
             ),
             RadarUaCountsSensor(
@@ -212,8 +257,8 @@ async def async_setup_entry(
                 "recon",
                 "recon",
                 "mdi:drone",
-                lambda coordinator_, region: _counts_value(
-                    region.get("counts"), "recon"
+                lambda coordinator_, threats: _counts_value(
+                    threats, "recon"
                 ),
             ),
             RadarUaCountsSensor(
@@ -223,8 +268,8 @@ async def async_setup_entry(
                 "missiles",
                 "missiles",
                 "mdi:rocket-launch",
-                lambda coordinator_, region: _counts_value(
-                    region.get("counts"), "missile", "ballistic"
+                lambda coordinator_, threats: _counts_value(
+                    threats, "missile", "ballistic"
                 ),
             ),
             RadarUaCountsSensor(
@@ -234,8 +279,8 @@ async def async_setup_entry(
                 "kab",
                 "kab",
                 "mdi:bomb",
-                lambda coordinator_, region: _counts_value(
-                    region.get("counts"), "kab"
+                lambda coordinator_, threats: _counts_value(
+                    threats, "kab"
                 ),
             ),
             RadarUaCountsSensor(
@@ -245,8 +290,8 @@ async def async_setup_entry(
                 "mig31k",
                 "mig31k",
                 "mdi:airplane-alert",
-                lambda coordinator_, region: _counts_value(
-                    region.get("counts"), "mig31k"
+                lambda coordinator_, threats: _counts_value(
+                    threats, "mig31k"
                 ),
             ),
             RadarUaCountsSensor(
@@ -256,11 +301,7 @@ async def async_setup_entry(
                 "total",
                 "total",
                 "mdi:crosshairs-gps",
-                lambda coordinator_, region: (
-                    region.get("threat_count")
-                    if isinstance(region.get("threat_count"), int)
-                    else None
-                ),
+                lambda coordinator_, source: _total_value(source),
             ),
             RadarUaCountsSensor(
                 coordinator,
@@ -269,11 +310,7 @@ async def async_setup_entry(
                 "raid_size",
                 "raid_size",
                 "mdi:chart-bell-curve",
-                lambda coordinator_, region: (
-                    region.get("group_size")
-                    if isinstance(region.get("group_size"), int)
-                    else None
-                ),
+                lambda coordinator_, source: _raid_size_value(source),
             ),
             RadarUaDataAgeSensor(coordinator, entry, region_key),
         ]
