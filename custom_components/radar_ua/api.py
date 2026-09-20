@@ -8,7 +8,7 @@ from typing import Any
 import aiohttp
 
 BASE_URL = "https://neptun.in.ua"
-USER_AGENT = "radar_ua-ha/2.0.0"
+USER_AGENT = "radar_ua-ha/2.1.0"
 TIMEOUT = 10  # seconds
 ATTRIBUTION = "Дані: Карта повітряних тривог — NEPTUN (https://neptun.in.ua/)"
 

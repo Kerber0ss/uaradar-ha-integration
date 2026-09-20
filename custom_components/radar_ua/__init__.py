@@ -7,7 +7,6 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers import entity_registry
 
 from .api import RadarUaApiClient
 from .coordinator import RadarUaDataUpdateCoordinator
@@ -18,7 +17,6 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Radar UA from a config entry."""
-    _remove_deprecated_entities(hass, entry)
     session = async_get_clientsession(hass)
     client = RadarUaApiClient(session)
     hass.data.setdefault(DOMAIN, {})
@@ -38,15 +36,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-def _remove_deprecated_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Remove v1 entities intentionally dropped from the NEPTUN-only v2 UI."""
-    registry = entity_registry.async_get(hass)
-    deprecated_suffixes = ("_mig31k", "_raid_size", "_advisory")
-    for entity in entity_registry.async_entries_for_config_entry(registry, entry.entry_id):
-        if entity.unique_id.endswith(deprecated_suffixes):
-            registry.async_remove(entity.entity_id)
-
-
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload the entry when its options change."""
     await hass.config_entries.async_reload(entry.entry_id)
@@ -57,12 +46,26 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
+        await _async_stop_stream_if_last(hass)
     return unload_ok
+
+
+async def _async_stop_stream_if_last(hass: HomeAssistant) -> None:
+    """Stop the shared WS stream when the last config entry is unloaded."""
+    store = hass.data.get(DOMAIN, {})
+    remaining = [key for key in store if key != "stream"]
+    if remaining:
+        return
+    stream = store.get("stream")
+    if stream is not None:
+        await stream.async_stop()
+        store.pop("stream", None)
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Clean up when an entry is removed."""
     hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
+    await _async_stop_stream_if_last(hass)
 
 
 async def _async_setup_services(hass: HomeAssistant) -> None:

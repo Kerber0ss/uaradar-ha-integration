@@ -52,15 +52,47 @@ class TestRaionAlerts:
     def test_unknown_region(self, situation):
         assert filters.raion_alerts(situation, "nonexistent", "конотоп") == []
 
-    def test_keeps_neptun_yellow_level(self, situation):
+    def test_keeps_live_neptun_level(self, situation):
         alert = filters.alert_for_scope(
             situation, "sumska", "Конотопський район"
         )
-        assert alert["level"] == "yellow"
+        assert alert["level"] == "red"
 
     def test_oblast_scope_uses_neptun_level(self, situation):
         alert = filters.alert_for_scope(situation, "sumska", None)
         assert alert["level"] == "red"
+
+    def test_matches_live_raion_key(self):
+        # Live alerts carry key "бахмутський" (lowercased, no " район" suffix).
+        data = {
+            "raions": [
+                {
+                    "key": "бахмутський",
+                    "name": "Бахмутський район",
+                    "oblast": "Донецька область",
+                    "since": "2026-09-20T10:00:00Z",
+                    "level": "red",
+                    "reasons": ["БпЛА"],
+                }
+            ]
+        }
+        matched = filters.raion_alerts(data, "donetska", "Бахмутський район")
+        assert len(matched) == 1
+        assert matched[0]["key"] == "бахмутський"
+
+    def test_live_raion_key_matches_configured_name(self):
+        # Config value may also be the bare key; item key must still match.
+        data = {
+            "raions": [
+                {
+                    "key": "бахмутський",
+                    "name": "Бахмутський район",
+                    "oblast": "Донецька область",
+                    "level": "red",
+                }
+            ]
+        }
+        assert len(filters.raion_alerts(data, "donetska", "бахмутський")) == 1
 
     def test_accepts_documented_oblast_prefixed_raion_key(self):
         data = {
@@ -78,10 +110,10 @@ class TestRaionAlerts:
 
 class TestCityAlerts:
     def test_city_matching_raion_name(self, situation):
-        # "Конотоп" matches "Конотопський район" (substring).
+        # "Конотоп" matches "Конотопський район" (substring on name).
         matched = filters.city_alerts(situation, "sumska", "Конотоп")
         assert len(matched) == 1
-        assert matched[0]["key"] == "konotopskyi"
+        assert matched[0]["key"] == "конотопський"
 
     def test_no_match(self, situation):
         assert filters.city_alerts(situation, "poltavska", "Кременчук") == []

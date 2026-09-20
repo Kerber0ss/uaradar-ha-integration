@@ -33,10 +33,18 @@ def _matches_region(item: dict[str, Any], region_key: str) -> bool:
 
 
 def _matches_raion(item: dict[str, Any], raion: str) -> bool:
-    """Match the stable NEPTUN raion key before display-name fallbacks."""
+    """Match the live NEPTUN raion key before display-name fallbacks.
+
+    Alert raions carry ``key`` (e.g. "бахмутський"), threats carry the same
+    key in ``regionKey``; both are normalized the same way as the config
+    value (casefold, strip " район", strip whitespace).
+    """
     expected_key = _raion_key(raion)
-    actual_key = _raion_key(item.get("regionKey") or item.get("key"))
-    return bool(expected_key and actual_key == expected_key) or any(
+    if expected_key:
+        actual_key = _raion_key(item.get("key")) or _raion_key(item.get("regionKey"))
+        if actual_key == expected_key:
+            return True
+    return any(
         substring_match(item.get(field), raion)
         for field in ("district", "name")
     )

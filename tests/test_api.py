@@ -72,13 +72,50 @@ async def test_alerts_reads_official_endpoint():
     assert session.calls[0][0] == f"{api.BASE_URL}/api/v1/alerts"
 
 
+async def test_situation_accepts_live_alert_shape():
+    """Live alerts carry key/name/oblast/since/level/reasons records."""
+    responses = _responses()
+    responses[f"{api.BASE_URL}/api/v1/alerts"] = FakeResponse(
+        {
+            "version": 1789992000,
+            "updatedAt": "2026-09-20T15:35:00Z",
+            "raions": [
+                {
+                    "key": "бахмутський",
+                    "name": "Бахмутський район",
+                    "oblast": "Донецька область",
+                    "since": "2026-09-20T10:00:00Z",
+                    "level": "red",
+                    "reasons": ["БпЛА"],
+                }
+            ],
+            "oblasts": [
+                {
+                    "key": "donetska",
+                    "name": "Донецька область",
+                    "oblast": "Донецька область",
+                    "since": "2026-09-20T10:00:00Z",
+                    "level": "red",
+                }
+            ],
+        }
+    )
+
+    data = await RadarUaApiClient(FakeSession(responses)).async_get_situation()
+
+    assert data["raions"][0]["key"] == "бахмутський"
+    assert data["raions"][0]["level"] == "red"
+    assert data["oblasts"][0]["oblast"] == "Донецька область"
+    assert data["attribution"] == api.ATTRIBUTION
+
+
 async def test_user_agent_header_sent():
     session = FakeSession(_responses())
 
     await RadarUaApiClient(session).async_get_situation()
 
     assert all(kwargs["headers"] == {"User-Agent": api.USER_AGENT} for _, kwargs in session.calls)
-    assert api.USER_AGENT == "radar_ua-ha/2.0.0"
+    assert api.USER_AGENT == "radar_ua-ha/2.1.0"
 
 
 async def test_invalid_official_payload_raises_api_error():
