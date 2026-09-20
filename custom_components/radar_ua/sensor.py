@@ -22,6 +22,7 @@ from .const import (
     LEVEL_GREEN,
     LEVEL_RED,
     LEVEL_YELLOW,
+    THREAT_MIG31K,
 )
 from .filters import alert_for_scope
 from .coordinator import RadarUaDataUpdateCoordinator
@@ -167,6 +168,13 @@ class RadarUaDataAgeSensor(RadarUaSensor):
         """Return the source data age in seconds."""
         return self.coordinator.data_age_s()
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Diagnostics: active transport (websocket or rest fallback)."""
+        attrs = dict(super().extra_state_attributes)
+        attrs["transport"] = self.coordinator.transport
+        return attrs
+
 
 def _counts_value(source: list[dict[str, Any]] | None, *types: str) -> int:
     """Sum direct-API threat units by type."""
@@ -175,6 +183,11 @@ def _counts_value(source: list[dict[str, Any]] | None, *types: str) -> int:
 
 def _total_value(source: list[dict[str, Any]]) -> int:
     """Return the total number of concrete threats in the configured scope."""
+    return sum_threat_units(source)
+
+
+def _raid_size_value(source: list[dict[str, Any]]) -> int:
+    """Raid size: sum of the ``count`` field (missing count counts as one)."""
     return sum_threat_units(source)
 
 
@@ -239,10 +252,30 @@ async def async_setup_entry(
                 coordinator,
                 entry,
                 region_key,
+                "mig31k",
+                "mig31k",
+                "mdi:airplane-alert",
+                lambda coordinator_, threats: _counts_value(
+                    threats, THREAT_MIG31K
+                ),
+            ),
+            RadarUaCountsSensor(
+                coordinator,
+                entry,
+                region_key,
                 "total",
                 "total",
                 "mdi:crosshairs-gps",
                 lambda coordinator_, source: _total_value(source),
+            ),
+            RadarUaCountsSensor(
+                coordinator,
+                entry,
+                region_key,
+                "raid_size",
+                "raid_size",
+                "mdi:chart-bell-curve",
+                lambda coordinator_, source: _raid_size_value(source),
             ),
             RadarUaDataAgeSensor(coordinator, entry, region_key),
         ]

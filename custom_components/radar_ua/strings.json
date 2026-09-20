@@ -63,8 +63,14 @@
       "kab": {
         "name": "КАБ"
       },
+      "mig31k": {
+        "name": "МіГ-31К"
+      },
       "total": {
         "name": "Усього цілей"
+      },
+      "raid_size": {
+        "name": "Розмір групи"
       },
       "data_age": {
         "name": "Вік даних"
@@ -74,8 +80,14 @@
       "alert": {
         "name": "Тривога в області"
       },
+      "advisory": {
+        "name": "Злет МіГ-31К"
+      },
       "raion_alert": {
         "name": "Тривога в районі"
+      },
+      "ukraine_alerts": {
+        "name": "Тривоги по Україні"
       }
     },
     "geo_location": {

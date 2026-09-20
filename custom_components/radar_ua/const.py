@@ -15,7 +15,7 @@ PLATFORMS = [
 CONF_REGION = "region"  # ключ региона из API meta
 CONF_RAION = "raion"  # район из статического списка (или None)
 CONF_CITY = "city"  # свободный текст, опционально
-CONF_SCAN_INTERVAL = "scan_interval"  # секунд, default 10, min 5
+CONF_SCAN_INTERVAL = "scan_interval"  # seconds; REST-fallback poll interval, default 30, min 5
 # CONF_UKRAINE_OVERVIEW удалён: обзорные сущности больше не создаются.
 
 ATTR_FETCH_OK = "fetch_ok"
@@ -36,7 +36,7 @@ THREAT_BALLISTIC = "ballistic"
 THREAT_KAB = "kab"
 THREAT_MIG31K = "mig31k"
 
-DEFAULT_SCAN_INTERVAL = 10
+DEFAULT_SCAN_INTERVAL = 30  # REST fallback poll interval (WS stream is primary)
 MIN_SCAN_INTERVAL = 5
 DEFAULT_UNAVAILABLE_AFTER = 300  # 5 минут
 

@@ -63,8 +63,14 @@
       "kab": {
         "name": "KAB"
       },
+      "mig31k": {
+        "name": "MiG-31K"
+      },
       "total": {
         "name": "Total threats"
+      },
+      "raid_size": {
+        "name": "Raid size"
       },
       "data_age": {
         "name": "Data age"
@@ -74,8 +80,14 @@
       "alert": {
         "name": "Region alert"
       },
+      "advisory": {
+        "name": "MiG-31K takeoff"
+      },
       "raion_alert": {
         "name": "Raion alert"
+      },
+      "ukraine_alerts": {
+        "name": "Ukraine alerts"
       }
     },
     "geo_location": {
