@@ -1,4 +1,4 @@
-"""Unit tests for custom_components/radar_ua/api.py with a mocked HTTP session."""
+"""Tests for the direct NEPTUN API client."""
 
 from __future__ import annotations
 
@@ -11,16 +11,12 @@ import pytest
 from radar_ua import api
 from radar_ua.api import RadarUaApiClient, RadarUaApiError
 
-from .conftest import load_situation
-
 
 class FakeResponse:
-    """Minimal stand-in for aiohttp.ClientResponse (async context manager)."""
+    """Minimal aiohttp response async context manager."""
 
-    def __init__(self, payload=None, status=200, exc: Exception | None = None):
-        self._payload = payload
+    def __init__(self, payload=None, status=200):
         self.status = status
-        self._exc = exc
         self.json = AsyncMock(return_value=payload)
 
     async def __aenter__(self):
@@ -31,10 +27,10 @@ class FakeResponse:
 
 
 class FakeSession:
-    """Records every get() call; returns a preconfigured response or raises."""
+    """Return a configured response per path and retain request details."""
 
-    def __init__(self, response: FakeResponse | None = None, exc: Exception | None = None):
-        self.response = response
+    def __init__(self, responses=None, exc: Exception | None = None):
+        self.responses = responses or {}
         self.exc = exc
         self.calls: list[tuple[str, dict]] = []
 
@@ -42,96 +38,64 @@ class FakeSession:
         self.calls.append((url, kwargs))
         if self.exc is not None:
             raise self.exc
-        return self.response
+        return self.responses[url]
 
 
-@pytest.fixture()
-def client_factory():
-    def _make(session):
-        return RadarUaApiClient(session)
-
-    return _make
-
-
-class TestSuccessfulRequests:
-    async def test_situation_returns_parsed_json(self, client_factory):
-        payload = load_situation()
-        session = FakeSession(FakeResponse(payload))
-        client = client_factory(session)
-
-        data = await client.async_get_situation()
-
-        assert data["fetch_ok"] is True
-        assert "sumska" in data["regions"]
-        url, kwargs = session.calls[0]
-        assert url == f"{api.BASE_URL}/v1/situation"
-
-    async def test_meta(self, client_factory):
-        payload = {"regions": ["sumska", "poltavska"], "poll_interval_s": 10}
-        session = FakeSession(FakeResponse(payload))
-        client = client_factory(session)
-
-        assert await client.async_get_meta() == payload
-        assert session.calls[0][0] == f"{api.BASE_URL}/v1/meta"
-
-    async def test_health(self, client_factory):
-        payload = {"ok": True, "source_age_s": 4.2}
-        session = FakeSession(FakeResponse(payload))
-        client = client_factory(session)
-
-        assert (await client.async_get_health())["ok"] is True
-        assert session.calls[0][0] == f"{api.BASE_URL}/health"
+def _responses():
+    return {
+        f"{api.BASE_URL}/api/v1/threats": FakeResponse(
+            {"serverTime": "2026-09-20T15:35:00Z", "threats": []}
+        ),
+        f"{api.BASE_URL}/api/v1/alerts": FakeResponse({"raions": [], "oblasts": []}),
+    }
 
 
-class TestUserAgent:
-    async def test_user_agent_header_sent(self, client_factory):
-        session = FakeSession(FakeResponse(load_situation()))
-        client = client_factory(session)
+async def test_situation_reads_both_official_endpoints():
+    session = FakeSession(_responses())
 
-        await client.async_get_situation()
+    data = await RadarUaApiClient(session).async_get_situation()
 
-        _, kwargs = session.calls[0]
-        assert kwargs["headers"] == {"User-Agent": api.USER_AGENT}
-        assert api.USER_AGENT.startswith("radar_ua-ha/")
+    assert data["threats"] == []
+    assert data["raions"] == []
+    assert data["oblasts"] == []
+    assert data["fetch_ok"] is True
+    assert {url for url, _ in session.calls} == {
+        f"{api.BASE_URL}/api/v1/threats",
+        f"{api.BASE_URL}/api/v1/alerts",
+    }
 
 
-class TestErrors:
-    async def test_http_500_raises_api_error(self, client_factory):
-        session = FakeSession(FakeResponse(status=500))
-        client = client_factory(session)
+async def test_alerts_reads_official_endpoint():
+    session = FakeSession(_responses())
 
-        with pytest.raises(RadarUaApiError, match="500"):
-            await client.async_get_situation()
+    assert await RadarUaApiClient(session).async_get_alerts() == {"raions": [], "oblasts": []}
+    assert session.calls[0][0] == f"{api.BASE_URL}/api/v1/alerts"
 
-    async def test_http_404_raises_api_error(self, client_factory):
-        session = FakeSession(FakeResponse(status=404))
-        client = client_factory(session)
 
-        with pytest.raises(RadarUaApiError):
-            await client.async_get_meta()
+async def test_user_agent_header_sent():
+    session = FakeSession(_responses())
 
-    async def test_network_error_raises_api_error(self, client_factory):
-        session = FakeSession(exc=aiohttp.ClientConnectionError("connection refused"))
-        client = client_factory(session)
+    await RadarUaApiClient(session).async_get_situation()
 
-        with pytest.raises(RadarUaApiError, match="connection refused"):
-            await client.async_get_situation()
+    assert all(kwargs["headers"] == {"User-Agent": api.USER_AGENT} for _, kwargs in session.calls)
+    assert api.USER_AGENT == "radar_ua-ha/2.0.0"
 
-    async def test_timeout_raises_api_error(self, client_factory):
-        session = FakeSession(exc=asyncio.TimeoutError())
-        client = client_factory(session)
 
-        with pytest.raises(RadarUaApiError, match="Timeout fetching"):
-            await client.async_get_health()
+async def test_invalid_official_payload_raises_api_error():
+    responses = _responses()
+    responses[f"{api.BASE_URL}/api/v1/alerts"] = FakeResponse({"raions": []})
 
-    async def test_invalid_json_raises_api_error(self, client_factory):
-        resp = FakeResponse(status=200)
-        resp.json = AsyncMock(side_effect=ValueError("bad json"))
-        session = FakeSession(resp)
-        client = client_factory(session)
+    with pytest.raises(RadarUaApiError, match="Invalid alerts"):
+        await RadarUaApiClient(FakeSession(responses)).async_get_situation()
 
-        with pytest.raises(RadarUaApiError, match="Invalid JSON"):
-            await client.async_get_situation()
 
-    async def test_api_error_is_exception_subclass(self):
-        assert issubclass(RadarUaApiError, Exception)
+async def test_network_error_raises_api_error():
+    with pytest.raises(RadarUaApiError, match="connection refused"):
+        await RadarUaApiClient(
+            FakeSession(exc=aiohttp.ClientConnectionError("connection refused"))
+        ).async_get_alerts()
+
+
+async def test_timeout_raises_api_error():
+    with pytest.raises(RadarUaApiError, match="Timeout fetching"):
+        await RadarUaApiClient(FakeSession(exc=asyncio.TimeoutError())).async_get_alerts()

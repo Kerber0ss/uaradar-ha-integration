@@ -1,66 +1,88 @@
-"""Client-side filtering helpers for raion / city slices of the Radar UA data.
-
-Semantics follow PLAN.md §4 and docs/api-notes.md:
-
-- Threats live in ``regions[key].threats[]`` (no top-level ``threats``).
-- Matching is case-insensitive substring over district / region / locality.
-- A threat with ``status == "resolved"`` is never an active threat.
-- ``regionKey`` on a threat is the *raion* key (e.g. "автозаводський"),
-  not the oblast key — it must not be compared against region keys.
-"""
+"""Filtering helpers for direct NEPTUN threat and alert snapshots."""
 
 from __future__ import annotations
 
 from typing import Any
 
+from .raions import REGION_NAMES_UK
+
 RESOLVED_STATUS = "resolved"
 
 
-def substring_match(haystack: str | None, needle: str) -> bool:
-    """Case-insensitive substring match; None/empty haystack or needle -> False."""
-    if not haystack or not needle:
-        return False
-    return needle.casefold() in haystack.casefold()
+def substring_match(haystack: str | None, needle: str | None) -> bool:
+    """Case-insensitive substring match; empty values never match."""
+    return bool(haystack and needle and needle.casefold() in haystack.casefold())
 
 
-def region(data: dict[str, Any], region_key: str) -> dict[str, Any]:
-    """Return the region object for region_key, or an empty dict."""
-    regions = data.get("regions") or {}
-    if not isinstance(regions, dict):
-        return {}
-    obj = regions.get(region_key)
-    return obj if isinstance(obj, dict) else {}
+def _raion_key(value: str | None) -> str:
+    """Return NEPTUN's canonical raion key from a displayed raion name."""
+    if not isinstance(value, str):
+        return ""
+    return value.casefold().rsplit(":", 1)[-1].removesuffix(" район").strip()
+
+
+def region_name(region_key: str) -> str:
+    """Return the official NEPTUN oblast name for an existing config key."""
+    return REGION_NAMES_UK.get(region_key, region_key)
+
+
+def _matches_region(item: dict[str, Any], region_key: str) -> bool:
+    """Whether a NEPTUN record belongs to the configured oblast."""
+    expected = region_name(region_key)
+    return item.get("region") == expected or item.get("oblast") == expected
+
+
+def _matches_raion(item: dict[str, Any], raion: str) -> bool:
+    """Match the stable NEPTUN raion key before display-name fallbacks."""
+    expected_key = _raion_key(raion)
+    actual_key = _raion_key(item.get("regionKey") or item.get("key"))
+    return bool(expected_key and actual_key == expected_key) or any(
+        substring_match(item.get(field), raion)
+        for field in ("district", "name")
+    )
 
 
 def raion_alerts(data: dict[str, Any], region_key: str, raion: str) -> list[dict[str, Any]]:
-    """Raions under alert whose name matches `raion`.
-
-    Returns the matched elements of regions[region_key].raions_under_alert[]
-    (each has "key", "name", "since").
-    """
-    matched: list[dict[str, Any]] = []
-    for entry in region(data, region_key).get("raions_under_alert") or []:
-        if not isinstance(entry, dict):
-            continue
-        if substring_match(entry.get("name"), raion) or substring_match(
-            entry.get("key"), raion
-        ):
-            matched.append(entry)
-    return matched
+    """Direct NEPTUN alert records for the configured raion."""
+    return [
+        item
+        for item in data.get("raions") or []
+        if isinstance(item, dict)
+        and _matches_region(item, region_key)
+        and _matches_raion(item, raion)
+    ]
 
 
 def city_alerts(data: dict[str, Any], region_key: str, city: str) -> list[dict[str, Any]]:
-    """Raions under alert matching the configured city (narrower slice)."""
+    """Compatibility alias for legacy entries that saved a city as a raion match."""
     return raion_alerts(data, region_key, city)
 
 
-def region_threats(data: dict[str, Any], region_key: str) -> list[dict[str, Any]]:
-    """All active threats of a region (threats with status != resolved)."""
-    threats = region(data, region_key).get("threats") or []
+def oblast_alerts(data: dict[str, Any], region_key: str) -> list[dict[str, Any]]:
+    """Direct NEPTUN alert records for a whole oblast."""
     return [
-        t
-        for t in threats
-        if isinstance(t, dict) and t.get("status") != RESOLVED_STATUS
+        item
+        for item in data.get("oblasts") or []
+        if isinstance(item, dict) and _matches_region(item, region_key)
+    ]
+
+
+def alert_for_scope(
+    data: dict[str, Any], region_key: str, raion: str | None
+) -> dict[str, Any] | None:
+    """Return the API record whose level applies to this entry's scope."""
+    matches = raion_alerts(data, region_key, raion) if raion else oblast_alerts(data, region_key)
+    return next((item for item in matches if isinstance(item.get("level"), str)), None)
+
+
+def region_threats(data: dict[str, Any], region_key: str) -> list[dict[str, Any]]:
+    """All active NEPTUN threats assigned to the configured oblast."""
+    return [
+        threat
+        for threat in data.get("threats") or []
+        if isinstance(threat, dict)
+        and threat.get("status") != RESOLVED_STATUS
+        and _matches_region(threat, region_key)
     ]
 
 
@@ -70,31 +92,18 @@ def filtered_threats(
     raion: str | None,
     city: str | None,
 ) -> list[dict[str, Any]]:
-    """Filter threats by raion and/or city (case-insensitive substring).
-
-    Raion: district ~ raion OR region ~ raion OR locality ~ raion.
-    City (narrower slice): district|locality|region ~ city.
-    Threats with status == resolved are dropped.
-    """
+    """Limit active threats to the configured raion; city remains a legacy fallback."""
     result: list[dict[str, Any]] = []
     for threat in threats:
         if not isinstance(threat, dict) or threat.get("status") == RESOLVED_STATUS:
             continue
-        if raion:
-            if not (
-                substring_match(threat.get("district"), raion)
-                or substring_match(threat.get("region"), raion)
-                or substring_match(threat.get("locality"), raion)
-                or substring_match(threat.get("regionKey"), raion)
-            ):
-                continue
-        if city:
-            if not (
-                substring_match(threat.get("district"), city)
-                or substring_match(threat.get("locality"), city)
-                or substring_match(threat.get("region"), city)
-            ):
-                continue
+        if raion and not _matches_raion(threat, raion):
+            continue
+        if city and not any(
+            substring_match(threat.get(field), city)
+            for field in ("district", "locality", "region")
+        ):
+            continue
         result.append(threat)
     return result
 
@@ -105,10 +114,5 @@ def scoped_region_threats(
     raion: str | None,
     city: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Return active threats limited to the configured region slice."""
-    return filtered_threats(
-        data,
-        region_threats(data, region_key),
-        raion,
-        city,
-    )
+    """Return active direct-API threats limited to this integration entry."""
+    return filtered_threats(data, region_threats(data, region_key), raion, city)

@@ -23,7 +23,7 @@ from .const import (
     LEVEL_RED,
     LEVEL_YELLOW,
 )
-from .filters import raion_alerts
+from .filters import alert_for_scope
 from .coordinator import RadarUaDataUpdateCoordinator
 from .entity import RadarUaEntity
 from .parsing import counts_for_threats, sum_threat_units
@@ -45,13 +45,7 @@ class RadarUaSensor(RadarUaEntity, SensorEntity):
         data = self.coordinator.data
         if isinstance(data, dict):
             attrs[ATTR_UPDATED] = data.get(ATTR_UPDATED)
-        counts = self.region_data.get("counts")
-        if isinstance(counts, dict):
-            attrs["counts"] = (
-                counts_for_threats(self.active_threats)
-                if self._is_scoped
-                else counts
-            )
+        attrs["counts"] = counts_for_threats(self.active_threats)
         return attrs
 
     @property
@@ -63,11 +57,7 @@ class RadarUaSensor(RadarUaEntity, SensorEntity):
 
 
 class RadarUaLevelSensor(RadarUaSensor):
-    """Alert level of the region: red / yellow / green.
-
-    If a raion is configured in the entry, the level reflects the raion only:
-    red while the raion is under alert, green otherwise.
-    """
+    """The direct NEPTUN level of the configured oblast or raion."""
 
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = [LEVEL_RED, LEVEL_YELLOW, LEVEL_GREEN]
@@ -86,15 +76,9 @@ class RadarUaLevelSensor(RadarUaSensor):
 
     @property
     def native_value(self) -> str | None:
-        """Return the machine level value (translated via options)."""
-        if self._raion:
-            # Raion-scoped: red only while the raion itself is under alert.
-            return (
-                LEVEL_RED
-                if raion_alerts(self.coordinator.data, self.region_key, self._raion)
-                else LEVEL_GREEN
-            )
-        return self.region_data.get("level")
+        """Use NEPTUN's level verbatim; no local threat-level calculation."""
+        alert = alert_for_scope(self.coordinator.data, self.region_key, self._raion)
+        return alert.get("level") if alert else LEVEL_GREEN
 
     @property
     def icon(self) -> str | None:
@@ -123,11 +107,8 @@ class RadarUaAlertSinceSensor(RadarUaSensor):
     @property
     def native_value(self) -> datetime | None:
         """Return the parsed alert_since timestamp, or None."""
-        if self._raion:
-            matched = raion_alerts(self.coordinator.data, self.region_key, self._raion)
-            raw = matched[0].get("since") if matched else None
-        else:
-            raw = self.region_data.get("alert_since")
+        alert = alert_for_scope(self.coordinator.data, self.region_key, self._raion)
+        raw = alert.get("since") if alert else None
         if not isinstance(raw, str):
             return None
         parsed = dt_util.parse_datetime(raw)
@@ -159,11 +140,7 @@ class RadarUaCountsSensor(RadarUaSensor):
     @property
     def native_value(self) -> float | None:
         """Return the computed counter value (None -> unknown)."""
-        region_data = self.region_data
-        if not region_data:
-            return None
-        source = self.active_threats if self._is_scoped else region_data
-        return self._value_fn(self.coordinator, source)
+        return self._value_fn(self.coordinator, self.active_threats)
 
 
 class RadarUaDataAgeSensor(RadarUaSensor):
@@ -191,39 +168,14 @@ class RadarUaDataAgeSensor(RadarUaSensor):
         return self.coordinator.data_age_s()
 
 
-def _counts_value(
-    source: list[dict[str, Any]] | dict[str, Any] | None,
-    *types: str,
-) -> int | None:
-    """Sum filtered threat units or an unfiltered API count."""
-    if isinstance(source, list):
-        return sum_threat_units(source, *types)
-    if not isinstance(source, dict):
-        return None
-    counts = source.get("counts")
-    if not isinstance(counts, dict):
-        return None
-    return sum(int(counts.get(threat_type) or 0) for threat_type in types)
+def _counts_value(source: list[dict[str, Any]] | None, *types: str) -> int:
+    """Sum direct-API threat units by type."""
+    return sum_threat_units(source, *types)
 
 
-def _total_value(
-    source: list[dict[str, Any]] | dict[str, Any],
-) -> int | None:
-    """Return the filtered threat count or the API region count."""
-    if isinstance(source, list):
-        return len(source)
-    value = source.get("threat_count")
-    return value if isinstance(value, int) else None
-
-
-def _raid_size_value(
-    source: list[dict[str, Any]] | dict[str, Any],
-) -> int | None:
-    """Return the filtered group size or the API region group size."""
-    if isinstance(source, list):
-        return sum_threat_units(source)
-    value = source.get("group_size")
-    return value if isinstance(value, int) else None
+def _total_value(source: list[dict[str, Any]]) -> int:
+    """Return the total number of concrete threats in the configured scope."""
+    return sum_threat_units(source)
 
 
 async def async_setup_entry(
@@ -247,7 +199,7 @@ async def async_setup_entry(
                 "drones",
                 "mdi:quadcopter",
                 lambda coordinator_, threats: _counts_value(
-                    threats, "uav"
+                    threats, "uav", "fpv"
                 ),
             ),
             RadarUaCountsSensor(
@@ -287,30 +239,10 @@ async def async_setup_entry(
                 coordinator,
                 entry,
                 region_key,
-                "mig31k",
-                "mig31k",
-                "mdi:airplane-alert",
-                lambda coordinator_, threats: _counts_value(
-                    threats, "mig31k"
-                ),
-            ),
-            RadarUaCountsSensor(
-                coordinator,
-                entry,
-                region_key,
                 "total",
                 "total",
                 "mdi:crosshairs-gps",
                 lambda coordinator_, source: _total_value(source),
-            ),
-            RadarUaCountsSensor(
-                coordinator,
-                entry,
-                region_key,
-                "raid_size",
-                "raid_size",
-                "mdi:chart-bell-curve",
-                lambda coordinator_, source: _raid_size_value(source),
             ),
             RadarUaDataAgeSensor(coordinator, entry, region_key),
         ]

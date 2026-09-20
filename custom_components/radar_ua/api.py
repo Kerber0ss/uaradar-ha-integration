@@ -1,4 +1,4 @@
-"""Radar UA API client."""
+"""Direct client for the public NEPTUN API."""
 
 from __future__ import annotations
 
@@ -7,20 +7,18 @@ from typing import Any
 
 import aiohttp
 
-from .const import DOMAIN
-
-_HOST_B64 = "cmFkYXIuc3lzbG9nLnBwLnVh"
-BASE_URL = f"https://{__import__('base64').b64decode(_HOST_B64).decode()}"
-USER_AGENT = "radar_ua-ha/1.0.0"
+BASE_URL = "https://neptun.in.ua"
+USER_AGENT = "radar_ua-ha/2.0.0"
 TIMEOUT = 10  # seconds
+ATTRIBUTION = "Дані: Карта повітряних тривог — NEPTUN (https://neptun.in.ua/)"
 
 
 class RadarUaApiError(Exception):
-    """Base error for the Radar UA API."""
+    """Failure while reading the NEPTUN API."""
 
 
 class RadarUaApiClient:
-    """Client for the aggregator API."""
+    """Read the public, read-only NEPTUN API."""
 
     def __init__(self, session: aiohttp.ClientSession) -> None:
         """Initialize the client with a shared aiohttp session."""
@@ -28,7 +26,7 @@ class RadarUaApiClient:
         self._headers = {"User-Agent": USER_AGENT}
 
     async def _get_json(self, path: str) -> dict[str, Any]:
-        """GET a JSON document, raising RadarUaApiError on any failure."""
+        """GET one JSON document, converting transport failures to our error."""
         url = f"{BASE_URL}{path}"
         try:
             async with asyncio.timeout(TIMEOUT):
@@ -37,22 +35,38 @@ class RadarUaApiClient:
                         raise RadarUaApiError(
                             f"Unexpected HTTP {resp.status} for {url}"
                         )
-                    return await resp.json()
+                    payload = await resp.json()
         except TimeoutError as err:
             raise RadarUaApiError(f"Timeout fetching {url}") from err
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise RadarUaApiError(f"Error fetching {url}: {err}") from err
         except ValueError as err:
             raise RadarUaApiError(f"Invalid JSON from {url}: {err}") from err
+        if not isinstance(payload, dict):
+            raise RadarUaApiError(f"Invalid JSON object from {url}")
+        return payload
 
     async def async_get_situation(self) -> dict[str, Any]:
-        """GET situation — full Ukraine situation payload."""
-        return await self._get_json("/v1/situation")
+        """Return direct NEPTUN threats and alert levels in one snapshot."""
+        threats, alerts = await asyncio.gather(
+            self._get_json("/api/v1/threats"),
+            self._get_json("/api/v1/alerts"),
+        )
+        if not isinstance(threats.get("threats"), list):
+            raise RadarUaApiError("Invalid threats payload from NEPTUN")
+        if not isinstance(alerts.get("raions"), list) or not isinstance(
+            alerts.get("oblasts"), list
+        ):
+            raise RadarUaApiError("Invalid alerts payload from NEPTUN")
+        return {
+            "updated": threats.get("serverTime"),
+            "fetch_ok": True,
+            "attribution": ATTRIBUTION,
+            "threats": threats["threats"],
+            "raions": alerts["raions"],
+            "oblasts": alerts["oblasts"],
+        }
 
-    async def async_get_meta(self) -> dict[str, Any]:
-        """GET meta — list of region keys and source metadata."""
-        return await self._get_json("/v1/meta")
-
-    async def async_get_health(self) -> dict[str, Any]:
-        """GET /health — service health check."""
-        return await self._get_json("/health")
+    async def async_get_alerts(self) -> dict[str, Any]:
+        """Read official oblast and raion alert levels from NEPTUN."""
+        return await self._get_json("/api/v1/alerts")

@@ -178,10 +178,7 @@ async def async_setup_entry(
     def region_keys() -> list[str]:
         """Regions whose threats get a geolocation entity (main region only)."""
         data = coordinator.data
-        if not isinstance(data, dict):
-            return []
-        regions = data.get("regions") or {}
-        return [main_region] if main_region in regions else []
+        return [main_region] if isinstance(data, dict) else []
 
     def collect_threats() -> dict[str, tuple[dict[str, Any], str]]:
         """Active threats by id, with the region key they were found in."""

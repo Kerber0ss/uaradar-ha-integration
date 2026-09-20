@@ -7,6 +7,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers import entity_registry
 
 from .api import RadarUaApiClient
 from .coordinator import RadarUaDataUpdateCoordinator
@@ -17,6 +18,7 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Radar UA from a config entry."""
+    _remove_deprecated_entities(hass, entry)
     session = async_get_clientsession(hass)
     client = RadarUaApiClient(session)
     hass.data.setdefault(DOMAIN, {})
@@ -34,6 +36,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
+
+
+def _remove_deprecated_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove v1 entities intentionally dropped from the NEPTUN-only v2 UI."""
+    registry = entity_registry.async_get(hass)
+    deprecated_suffixes = ("_mig31k", "_raid_size", "_advisory")
+    for entity in entity_registry.async_entries_for_config_entry(registry, entry.entry_id):
+        if entity.unique_id.endswith(deprecated_suffixes):
+            registry.async_remove(entity.entity_id)
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:

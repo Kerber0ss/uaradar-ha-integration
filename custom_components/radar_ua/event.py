@@ -18,7 +18,7 @@ from .const import (
 )
 from .coordinator import RadarUaDataUpdateCoordinator
 from .entity import RadarUaEntity
-from .filters import raion_alerts
+from .filters import alert_for_scope
 
 EVENT_ALERT_STARTED = "alert_started"
 EVENT_ALERT_ENDED = "alert_ended"
@@ -69,20 +69,12 @@ class RadarUaEventEntity(RadarUaEntity, EventEntity):
     def _scoped_level(
         self, region_data: dict[str, Any]
     ) -> tuple[str | None, str | None]:
-        """Return the configured slice level and its alert start time."""
+        """Return NEPTUN's configured-scope level and its alert start time."""
         raion = self.entry.data.get(CONF_RAION)
-        if raion:
-            matched = raion_alerts(self.coordinator.data, self.region_key, raion)
-            return (
-                LEVEL_RED if matched else LEVEL_GREEN,
-                matched[0].get("since") if matched else None,
-            )
-        level = region_data.get("level")
-        return (
-            (level, region_data.get("alert_since"))
-            if isinstance(level, str)
-            else (None, None)
-        )
+        alert = alert_for_scope(self.coordinator.data, self.region_key, raion)
+        if alert:
+            return alert.get("level"), alert.get("since")
+        return LEVEL_GREEN, None
 
     @callback
     def _handle_coordinator_update(self) -> None:

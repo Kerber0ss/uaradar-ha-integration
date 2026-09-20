@@ -12,16 +12,13 @@ from .const import (
     CONF_RAION,
     CONF_REGION,
     DOMAIN,
-    LEVEL_RED,
-    THREAT_MIG31K,
 )
 from .coordinator import RadarUaDataUpdateCoordinator
-from .entity import RadarUaEntity, device_info_for
-from .filters import raion_alerts
+from .entity import RadarUaEntity
+from .filters import alert_for_scope
 from .raions import REGION_NAMES_UK
 
 ICON_ALERT = "mdi:alert-rhombus"
-ICON_ADVISORY = "mdi:airplane-alert"
 ICON_RAION_ALERT = "mdi:map-marker-alert-outline"
 ICON_UKRAINE_ALERTS = "mdi:map-marker-alert"
 
@@ -48,47 +45,8 @@ class RadarUaAlertBinarySensor(RadarUaBinarySensor):
 
     @property
     def is_on(self) -> bool | None:
-        """True while the region is under a red alert."""
-        return self.region_data.get("level") == LEVEL_RED
-
-
-class RadarUaAdvisoryBinarySensor(RadarUaBinarySensor):
-    """Advisory proxy: a MiG-31K threat is present in the region.
-
-    The API has no ``advisory`` flag; a threat with ``type == "mig31k"``
-    means a MiG-31K has taken off (Kinzhal carrier) — warn without sirens.
-    """
-
-    _attr_icon = ICON_ADVISORY
-    _attr_translation_key = "advisory"
-
-    def __init__(
-        self,
-        coordinator: RadarUaDataUpdateCoordinator,
-        entry: ConfigEntry,
-        region_key: str,
-    ) -> None:
-        """Initialize the advisory binary sensor for region_key."""
-        super().__init__(coordinator, entry, region_key, "advisory")
-
-    @property
-    def is_on(self) -> bool | None:
-        """True when any active threat in the region is of type mig31k."""
-        return any(
-            threat.get("type") == THREAT_MIG31K
-            for threat in self.active_threats
-        )
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Expose the ids of currently detected MiG-31K threats."""
-        attrs = dict(super().extra_state_attributes)
-        attrs["mig31k_ids"] = [
-            threat.get("id")
-            for threat in self.active_threats
-            if threat.get("type") == THREAT_MIG31K
-        ]
-        return attrs
+        """True only when NEPTUN reports an oblast-wide alert."""
+        return alert_for_scope(self.coordinator.data, self.region_key, None) is not None
 
 
 class RadarUaRaionAlertBinarySensor(RadarUaBinarySensor):
@@ -110,17 +68,17 @@ class RadarUaRaionAlertBinarySensor(RadarUaBinarySensor):
 
     @property
     def is_on(self) -> bool | None:
-        """True when a raion under alert matches the configured raion."""
-        return bool(raion_alerts(self.coordinator.data, self.region_key, self._raion))
+        """True when NEPTUN reports an alert in the configured raion."""
+        return alert_for_scope(self.coordinator.data, self.region_key, self._raion) is not None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Matched raions under alert (name + since)."""
         attrs = dict(super().extra_state_attributes)
-        matched = raion_alerts(self.coordinator.data, self.region_key, self._raion)
+        alert = alert_for_scope(self.coordinator.data, self.region_key, self._raion)
         attrs["matched_raions"] = [
-            {"name": item.get("name"), "since": item.get("since")} for item in matched
-        ]
+            {"name": alert.get("name"), "since": alert.get("since"), "level": alert.get("level")}
+        ] if alert else []
         return attrs
 
 
@@ -136,7 +94,6 @@ async def async_setup_entry(
 
     entities: list = [
         RadarUaAlertBinarySensor(coordinator, entry, region_key),
-        RadarUaAdvisoryBinarySensor(coordinator, entry, region_key),
     ]
 
     raion = entry.data.get(CONF_RAION)

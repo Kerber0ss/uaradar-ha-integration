@@ -52,6 +52,29 @@ class TestRaionAlerts:
     def test_unknown_region(self, situation):
         assert filters.raion_alerts(situation, "nonexistent", "конотоп") == []
 
+    def test_keeps_neptun_yellow_level(self, situation):
+        alert = filters.alert_for_scope(
+            situation, "sumska", "Конотопський район"
+        )
+        assert alert["level"] == "yellow"
+
+    def test_oblast_scope_uses_neptun_level(self, situation):
+        alert = filters.alert_for_scope(situation, "sumska", None)
+        assert alert["level"] == "red"
+
+    def test_accepts_documented_oblast_prefixed_raion_key(self):
+        data = {
+            "raions": [
+                {
+                    "key": "odeska:odeskyi",
+                    "name": "Одеський район",
+                    "oblast": "Одеська область",
+                    "level": "yellow",
+                }
+            ]
+        }
+        assert filters.alert_for_scope(data, "odeska", "Одеський район")["level"] == "yellow"
+
 
 class TestCityAlerts:
     def test_city_matching_raion_name(self, situation):
@@ -71,7 +94,7 @@ class TestRegionThreats:
         # trk_00196640 has status "resolved" in the fixture.
         assert "trk_00196640" not in ids
         assert "trk_00197710" in ids
-        assert "trk_00197702" in ids
+        assert "trk_00197702" not in ids  # Global MiG has no configured oblast.
 
     def test_all_active_returned(self, situation):
         assert len(filters.region_threats(situation, "poltavska")) == 2
@@ -92,10 +115,13 @@ class TestScopedRegionThreats:
 
     def test_without_raion_keeps_all_active_threats(self, situation):
         threats = filters.scoped_region_threats(situation, "sumska", None)
-        assert {threat["id"] for threat in threats} == {
-            "trk_00197710",
-            "trk_00197702",
-        }
+        assert {threat["id"] for threat in threats} == {"trk_00197710"}
+
+    def test_matches_neptun_region_key_before_city(self, situation):
+        threats = filters.scoped_region_threats(
+            situation, "sumska", "Конотопський район"
+        )
+        assert [threat["id"] for threat in threats] == ["trk_00197710"]
 
 
 class TestFilteredThreats:
@@ -112,7 +138,7 @@ class TestFilteredThreats:
     def test_match_by_region_field(self, situation):
         threats = filters.region_threats(situation, "poltavska")
         result = filters.filtered_threats(situation, threats, "Полтавська", None)
-        assert len(result) == 2
+        assert result == []  # Direct API counts are scoped to a raion, not oblast text.
 
     def test_combination_raion_and_city(self, situation):
         threats = filters.region_threats(situation, "sumska")
@@ -128,7 +154,7 @@ class TestFilteredThreats:
     def test_no_filters_returns_active(self, situation):
         threats = filters.region_threats(situation, "sumska")
         result = filters.filtered_threats(situation, threats, None, None)
-        assert len(result) == 2
+        assert len(result) == 1
 
     def test_resolved_never_returned(self, situation):
         threats = filters.region_threats(situation, "sumska") + [

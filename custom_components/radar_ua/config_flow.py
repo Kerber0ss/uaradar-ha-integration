@@ -79,11 +79,8 @@ class RadarUaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             session = async_get_clientsession(self.hass)
             client = RadarUaApiClient(session)
             try:
-                meta = await client.async_get_meta()
-                meta_regions = meta.get("regions") or []
-                if not isinstance(meta_regions, list) or not meta_regions:
-                    raise RadarUaApiError("empty regions list")
-                self._meta_regions = meta_regions
+                await client.async_get_alerts()
+                self._meta_regions = list(REGION_NAMES_UK)
             except RadarUaApiError:
                 errors["base"] = "cannot_connect"
 

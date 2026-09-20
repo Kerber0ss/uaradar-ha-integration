@@ -1,6 +1,6 @@
 # Radar UA
 
-Home Assistant integration: air raid alerts & airborne threat tracking for Ukraine (one instance = one oblast, optional raion/city).
+Home Assistant integration for direct [NEPTUN](https://neptun.in.ua/developers) alert levels and airborne threats (one instance = one oblast, optional raion).
 
 > ⚠️ **NOT an official alerting system.** For safety rely on official sirens and the [Air Alert](https://alert.military.in.ua/) app.
 
@@ -12,14 +12,12 @@ Data source: [NEPTUN](https://neptun.in.ua/).
 
 ## Entities
 
-- `sensor.radar_ua_<region>_level` — red / yellow / green
+- `sensor.radar_ua_<region>_level` — direct `red` / `yellow` / `green` level from NEPTUN for the configured oblast or raion
 - `sensor.radar_ua_<region>_alert_since` — alert start (timestamp)
-- `sensor.radar_ua_<region>_drones` / `_recon` / `_missiles` / `_kab` / `_mig31k` / `_total` / `_raid_size`
+- `sensor.radar_ua_<region>_drones` / `_recon` / `_missiles` / `_kab` / `_total` — concrete threat counts in the configured raion
 - `sensor.radar_ua_<region>_data_age` — diagnostics
 - `binary_sensor.radar_ua_<region>_alert` — alert in the oblast
-- `binary_sensor.radar_ua_<region>_advisory` — MiG-31K takeoff
 - `binary_sensor.radar_ua_<region>_raion_alert` — alert in configured raion
-- `binary_sensor.radar_ua_ukraine_alerts` — compact Ukraine-wide overview (on when any oblast is red; attributes: `alerts_by_region` name→level, `count_alerts`)
 - `geo_location.radar_ua_*` — active threats on the map
 - `button.radar_ua_<region>_refresh` — force refresh
 

@@ -19,7 +19,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import RadarUaDataUpdateCoordinator
-from .filters import scoped_region_threats
+from .filters import region_name, scoped_region_threats
 from .raions import REGION_NAMES_UK
 
 
@@ -75,8 +75,8 @@ class RadarUaEntity(CoordinatorEntity[RadarUaDataUpdateCoordinator], Entity):
 
     @property
     def region_data(self) -> dict[str, Any]:
-        """The region object from the latest coordinator data."""
-        return self.coordinator.region(self.region_key)
+        """Stable display metadata for this entry's configured oblast."""
+        return {"key": self.region_key, "name": region_name(self.region_key)}
 
     @property
     def active_threats(self) -> list[dict[str, Any]]:

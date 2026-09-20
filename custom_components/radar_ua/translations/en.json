@@ -63,14 +63,8 @@
       "kab": {
         "name": "KAB"
       },
-      "mig31k": {
-        "name": "MiG-31K"
-      },
       "total": {
         "name": "Total threats"
-      },
-      "raid_size": {
-        "name": "Drone group"
       },
       "data_age": {
         "name": "Data age"
@@ -79,9 +73,6 @@
     "binary_sensor": {
       "alert": {
         "name": "Region alert"
-      },
-      "advisory": {
-        "name": "MiG-31K takeoff"
       },
       "raion_alert": {
         "name": "Raion alert"
