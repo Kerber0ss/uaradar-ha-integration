@@ -129,7 +129,16 @@ class NEPTUNStreamClient:
         """Start the stream task (no-op when already started)."""
         if self._task is not None:
             return
-        self._task = self.hass.async_create_task(self._run())
+        # The stream task runs forever, so it must be a *background* task:
+        # hass.async_create_task registers it as a setup task and HA's
+        # bootstrap would wait for it (300 s timeout) on every start.
+        # async_create_background_task keeps it out of the startup barrier;
+        # HA still cancels background tasks on shutdown.
+        create_bg = getattr(self.hass, "async_create_background_task", None)
+        if create_bg is not None:
+            self._task = create_bg(self._run(), "neptun_stream")
+        else:
+            self._task = asyncio.create_task(self._run())
 
     async def async_stop(self) -> None:
         """Close the socket, cancel the task and wait for it to finish."""
