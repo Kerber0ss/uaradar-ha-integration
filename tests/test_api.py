@@ -115,7 +115,7 @@ async def test_user_agent_header_sent():
     await RadarUaApiClient(session).async_get_situation()
 
     assert all(kwargs["headers"] == {"User-Agent": api.USER_AGENT} for _, kwargs in session.calls)
-    assert api.USER_AGENT == "radar_ua-ha/2.1.0"
+    assert api.USER_AGENT == "radar_ua-ha/2.1.1"
 
 
 async def test_invalid_official_payload_raises_api_error():

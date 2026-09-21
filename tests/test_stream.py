@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock
+import unittest.mock
 
 import aiohttp
 import pytest
@@ -309,17 +310,58 @@ def test_async_start_is_idempotent():
     session = FakeWSSession()
     client = make_client(session)
 
-    def _close_coro(coro):
+    def _close_coro(coro, *args, **kwargs):
         coro.close()
         return MagicMock()
 
     hass = MagicMock()
-    hass.async_create_task = _close_coro
+    setup_calls = []
+
+    def _setup_task(coro):
+        coro.close()
+        setup_calls.append(coro)
+        return MagicMock()
+
+    hass.async_create_task = _setup_task
+    hass.async_create_background_task = _close_coro
     client.hass = hass
     client.async_start()
     first = client._task
     client.async_start()
     assert client._task is first
+    assert not setup_calls, "stream task must not be registered via async_create_task"
+
+
+async def test_async_start_does_not_block_ha_bootstrap():
+    """Regression: the eternal stream task must not be a setup task.
+
+    hass.async_create_task registers the task with HA's bootstrap, which
+    then waits for it (300 s timeout) on every start-up because the stream
+    task never finishes. async_start must use the background-task API.
+    """
+    session = FakeWSSession()
+    client = make_client(session)
+
+    hass = MagicMock()
+    del hass.async_create_background_task  # force the asyncio fallback
+    client.hass = hass
+
+    created = []
+
+    def _fake_create(coro, *args, **kwargs):
+        coro.close()
+        task = MagicMock()
+        created.append(task)
+        return task
+
+    hass.loop = MagicMock()
+    hass.loop.create_task = _fake_create
+    with unittest.mock.patch(
+        "radar_ua.stream.asyncio.create_task", _fake_create
+    ):
+        client.async_start()
+    assert created, "task must be created via asyncio.create_task fallback"
+    await client.async_stop()
 
 
 def test_backoff_doubles_with_jitter_and_caps_at_60():
