@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorStateClass,
+)
+from homeassistant.const import UnitOfLength
 
 from radar_ua.binary_sensor import (
     RadarUaAdvisoryBinarySensor,
@@ -11,7 +17,28 @@ from radar_ua.binary_sensor import (
     RadarUaUkraineAlertsBinarySensor,
     _has_ukraine_alerts_entity,
 )
-from radar_ua.sensor import RadarUaDataAgeSensor, RadarUaCountsSensor
+from radar_ua.sensor import (
+    RadarUaDataAgeSensor,
+    RadarUaCountsSensor,
+    RadarUaDistanceSensor,
+)
+
+
+def make_entry_with_city(region="sumska", raion="Конотопський район", city_id="UA59020070010054283"):
+    """Entry with a reference city: the only shape that gets a distance sensor."""
+    return SimpleNamespace(
+        entry_id="test-entry",
+        options={},
+        data={"region": region, "raion": raion, "reference_city_id": city_id},
+    )
+
+
+def make_distance_sensor(coordinator, entry):
+    """Distance sensor built the way async_setup_entry does it."""
+    from radar_ua.geo.cities import city_by_id
+
+    city = city_by_id(entry.data["reference_city_id"])
+    return RadarUaDistanceSensor(coordinator, entry, entry.data["region"], city)
 
 NOW = datetime.now(timezone.utc).isoformat()
 
@@ -181,3 +208,277 @@ class TestAlertBinarySensorStillWorks:
         coordinator = make_coordinator(make_data([], oblasts=oblasts))
         sensor = RadarUaAlertBinarySensor(coordinator, make_entry(), "donetska")
         assert sensor.is_on is True
+
+
+def distance_threat(threat_id, lat, lon, **overrides):
+    """Active Сумська threat with coordinates, shaped like the live API."""
+    threat = {
+        "id": threat_id,
+        "type": "uav",
+        "region": "Сумська область",
+        "district": "Конотопський район",
+        "regionKey": "конотопський",
+        "locality": "",
+        "lat": lat,
+        "lon": lon,
+        "status": "active",
+        "count": 1,
+    }
+    threat.update(overrides)
+    return threat
+
+
+class TestDistanceSensorSetup:
+    async def test_created_only_with_resolvable_reference_city(self, make_coordinator):
+        import radar_ua.sensor as sensor_module
+
+        coordinator = make_coordinator(make_data([]))
+        added: list = []
+
+        def fake_add_entities(new_entities, update_before_add=False):
+            added.extend(new_entities)
+
+        entry = make_entry()
+        entry.runtime_data = coordinator
+        # Coordinator of a legacy entry (donetska, no reference city).
+        await sensor_module.async_setup_entry(None, entry, fake_add_entities)
+        assert not any(
+            isinstance(entity, RadarUaDistanceSensor) for entity in added
+        )
+
+    async def test_created_for_entry_with_reference_city(self, make_coordinator):
+        import radar_ua.sensor as sensor_module
+
+        coordinator = make_coordinator(make_data([]))
+        added: list = []
+
+        def fake_add_entities(new_entities, update_before_add=False):
+            added.extend(new_entities)
+
+        entry = make_entry_with_city()
+        entry.runtime_data = coordinator
+        await sensor_module.async_setup_entry(None, entry, fake_add_entities)
+        distance = [
+            entity
+            for entity in added
+            if isinstance(entity, RadarUaDistanceSensor)
+        ]
+        assert len(distance) == 1
+        assert distance[0].unique_id == "test-entry_sumska_distance"
+
+    async def test_not_created_for_unresolvable_city_id(self, make_coordinator):
+        import radar_ua.sensor as sensor_module
+
+        coordinator = make_coordinator(make_data([]))
+        added: list = []
+
+        async def fake_add_entities(new_entities, update_before_add=False):
+            added.extend(new_entities)
+
+        entry = make_entry_with_city(city_id="no-such-city")
+        entry.runtime_data = coordinator
+        await sensor_module.async_setup_entry(None, entry, fake_add_entities)
+        assert not any(
+            isinstance(entity, RadarUaDistanceSensor) for entity in added
+        )
+
+
+class TestDistanceSensorNearest:
+    def test_nearest_of_two_threats(self, make_coordinator):
+        # Krolevets ~37 km from Konotop; the other point ~2 km.
+        threats = [
+            distance_threat("trk_far", 51.5548, 33.3875),
+            distance_threat("trk_near", 51.26, 33.22),
+        ]
+        coordinator = make_coordinator(make_data(threats))
+        sensor = make_distance_sensor(coordinator, make_entry_with_city())
+
+        assert 2.0 < sensor.native_value < 3.0
+        attrs = sensor.extra_state_attributes
+        assert attrs["threat_id"] == "trk_near"
+
+    def test_tie_broken_by_threat_id(self, make_coordinator):
+        # Two threats at exactly the same spot: the lower id wins.
+        threats = [
+            distance_threat("trk_b", 51.3, 33.25),
+            distance_threat("trk_a", 51.3, 33.25),
+        ]
+        coordinator = make_coordinator(make_data(threats))
+        sensor = make_distance_sensor(coordinator, make_entry_with_city())
+        assert sensor.native_value == round(sensor._candidates[0][0], 1)
+        assert sensor._nearest[1]["id"] == "trk_a"
+        assert sensor.extra_state_attributes["threat_id"] == "trk_a"
+
+    def test_area_only_excluded(self, make_coordinator):
+        threats = [distance_threat("trk_area", 51.24, 33.21, areaOnly=True)]
+        coordinator = make_coordinator(make_data(threats))
+        sensor = make_distance_sensor(coordinator, make_entry_with_city())
+        assert sensor.native_value is None
+
+    def test_missing_and_non_finite_coordinates_excluded(self, make_coordinator):
+        threats = [
+            distance_threat("trk_noloc", lat=None, lon=None),
+            distance_threat("trk_nan", lat=float("nan"), lon=33.4),
+        ]
+        coordinator = make_coordinator(make_data(threats))
+        sensor = make_distance_sensor(coordinator, make_entry_with_city())
+        assert sensor.native_value is None
+
+    def test_resolved_excluded(self, make_coordinator):
+        threats = [distance_threat("trk_old", 51.24, 33.21, status="resolved")]
+        coordinator = make_coordinator(make_data(threats))
+        sensor = make_distance_sensor(coordinator, make_entry_with_city())
+        assert sensor.native_value is None
+
+    def test_krolevets_target_seen_from_konotop(self, make_coordinator):
+        # The plan-distance acceptance scenario: a target over Krolevets
+        # (empty district -> geometric raion membership) yields a non-zero
+        # distance for a Konotop-based entry.
+        threats = [distance_threat("trk_far", 51.5548, 33.3875, district="", regionKey=None)]
+        coordinator = make_coordinator(make_data(threats))
+        sensor = make_distance_sensor(coordinator, make_entry_with_city())
+        assert 36.0 < sensor.native_value < 38.5
+        assert sensor.extra_state_attributes["threat_id"] == "trk_far"
+
+
+class TestDistanceSensorStates:
+    def test_no_candidates_state_unknown(self, make_coordinator):
+        coordinator = make_coordinator(make_data([]))
+        sensor = make_distance_sensor(coordinator, make_entry_with_city())
+        assert sensor.native_value is None  # None -> unknown, never 0
+
+    def test_unavailable_on_stale_coordinator(self, make_coordinator):
+        # Data older than DEFAULT_UNAVAILABLE_AFTER (300 s).
+        stale_time = (datetime.now(timezone.utc) - timedelta(seconds=600)).isoformat()
+        data = make_data([distance_threat("trk_near", 51.24, 33.21)])
+        data["updated"] = stale_time
+        coordinator = make_coordinator(data)
+        sensor = make_distance_sensor(coordinator, make_entry_with_city())
+        assert sensor.available is False
+
+    def test_available_on_fresh_data(self, make_coordinator):
+        coordinator = make_coordinator(make_data([distance_threat("trk_near", 51.24, 33.21)]))
+        sensor = make_distance_sensor(coordinator, make_entry_with_city())
+        assert sensor.available is True
+
+    def test_unavailable_after_failed_update(self, make_coordinator):
+        coordinator = make_coordinator(make_data([]))
+        coordinator.last_update_success = False
+        sensor = make_distance_sensor(coordinator, make_entry_with_city())
+        assert sensor.available is False
+
+
+class TestDistanceSensorAttributes:
+    def test_reference_city_attributes_present(self, make_coordinator):
+        coordinator = make_coordinator(make_data([]))
+        sensor = make_distance_sensor(coordinator, make_entry_with_city())
+        attrs = sensor.extra_state_attributes
+        assert attrs["reference_city_id"] == "UA59020070010054283"
+        assert attrs["reference_city"] == "Конотоп"
+
+    def test_nearest_threat_attributes_present(self, make_coordinator):
+        threats = [
+            distance_threat(
+                "trk_near",
+                51.2397,
+                33.2067,
+                locality="Конотоп",
+                uncertaintyKm=3,
+            )
+        ]
+        coordinator = make_coordinator(make_data(threats))
+        sensor = make_distance_sensor(coordinator, make_entry_with_city())
+        attrs = sensor.extra_state_attributes
+        assert attrs["threat_id"] == "trk_near"
+        assert attrs["threat_type"] == "uav"
+        assert attrs["locality"] == "Конотоп"
+        assert attrs["uncertaintyKm"] == 3
+
+    def test_no_threat_attributes_without_candidates(self, make_coordinator):
+        coordinator = make_coordinator(make_data([]))
+        sensor = make_distance_sensor(coordinator, make_entry_with_city())
+        attrs = sensor.extra_state_attributes
+        assert "threat_id" not in attrs
+        assert "threat_type" not in attrs
+
+    def test_unit_and_device_class(self, make_coordinator):
+        coordinator = make_coordinator(make_data([]))
+        sensor = make_distance_sensor(coordinator, make_entry_with_city())
+        assert sensor.native_unit_of_measurement == UnitOfLength.KILOMETERS
+        assert sensor.device_class == SensorDeviceClass.DISTANCE
+        assert sensor.state_class == SensorStateClass.MEASUREMENT
+
+    def test_unique_id_contains_distance_key(self, make_coordinator):
+        coordinator = make_coordinator(make_data([]))
+        entry = make_entry_with_city()
+        sensor = make_distance_sensor(coordinator, entry)
+        assert sensor.unique_id == "test-entry_sumska_distance"
+
+
+class TestDistanceSensorScoping:
+    def test_legacy_city_entry_has_no_reference_city_sensor_data(self, make_coordinator):
+        # Entry without reference_city_id: scoped threats keep legacy city
+        # narrowing; the sensor itself is simply never created for it
+        # (guarded in async_setup_entry).
+        entry = SimpleNamespace(
+            entry_id="test-entry",
+            options={},
+            data={"region": "sumska", "raion": "Конотопський район", "city": "Конотоп"},
+        )
+        threats = [
+            distance_threat("trk_konotop", 51.2387, 33.1986, locality="Конотоп"),
+            distance_threat("trk_krolevets", 51.5548, 33.3875, district="", regionKey=None),
+        ]
+        coordinator = make_coordinator(make_data(threats))
+        from radar_ua.sensor import RadarUaDistanceSensor
+        from radar_ua.geo.cities import city_by_id
+
+        city = city_by_id("UA59020070010054283")
+        sensor = RadarUaDistanceSensor(coordinator, entry, "sumska", city)
+        # Legacy entries (free-text city, no reference_city_id) keep the old
+        # name narrowing: only the threat mentioning Конотоп survives.
+        assert 0.3 < sensor.native_value < 1.0
+        assert sensor.extra_state_attributes["threat_id"] == "trk_konotop"
+        candidate_ids = {t["id"] for _, t in sensor._candidates}
+        assert candidate_ids == {"trk_konotop"}
+
+    def test_reference_city_entry_sees_whole_raion(self, make_coordinator):
+        # Adding a reference city (via the options flow) removes the name
+        # narrowing: the Krolevets-area target now counts too.
+        entry = SimpleNamespace(
+            entry_id="test-entry",
+            options={},
+            data={
+                "region": "sumska",
+                "raion": "Конотопський район",
+                "city": "Конотоп",
+                "reference_city_id": "UA59020070010054283",
+            },
+        )
+        threats = [
+            distance_threat("trk_konotop", 51.2387, 33.1986, locality="Конотоп"),
+            distance_threat("trk_krolevets", 51.5548, 33.3875, district="", regionKey=None),
+        ]
+        coordinator = make_coordinator(make_data(threats))
+        from radar_ua.sensor import RadarUaDistanceSensor
+        from radar_ua.geo.cities import city_by_id
+
+        city = city_by_id("UA59020070010054283")
+        sensor = RadarUaDistanceSensor(coordinator, entry, "sumska", city)
+        assert 0.3 < sensor.native_value < 1.0
+        candidate_ids = {t["id"] for _, t in sensor._candidates}
+        assert candidate_ids == {"trk_konotop", "trk_krolevets"}
+
+    def test_scope_excludes_other_raion_threat(self, make_coordinator):
+        # A threat assigned by NEPTUN to Сумський район must not feed the
+        # Konotopskyi sensor.
+        entry = make_entry_with_city()
+        threats = [
+            distance_threat(
+                "trk_sumy", 50.9119, 34.8027,
+                district="Сумський район", regionKey="сумський",
+            )
+        ]
+        coordinator = make_coordinator(make_data(threats))
+        sensor = make_distance_sensor(coordinator, entry)
+        assert sensor.native_value is None
