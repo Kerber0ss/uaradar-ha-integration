@@ -14,7 +14,8 @@ PLATFORMS = [
 
 CONF_REGION = "region"  # ключ региона из API meta
 CONF_RAION = "raion"  # район из статического списка (или None)
-CONF_CITY = "city"  # свободный текст, опционально
+CONF_CITY = "city"  # свободный текст, опционально (legacy, не используется новыми записями)
+CONF_REFERENCE_CITY_ID = "reference_city_id"  # устойчивый id города из справочника (опорная точка расстояния)
 CONF_SCAN_INTERVAL = "scan_interval"  # seconds; REST-fallback poll interval, default 30, min 5
 # CONF_UKRAINE_OVERVIEW удалён: обзорные сущности больше не создаются.
 

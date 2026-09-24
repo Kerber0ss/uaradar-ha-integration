@@ -10,15 +10,23 @@
       },
       "raions": {
         "title": "Radar UA — {region}",
-        "description": "Pick a raion from the list or enter it manually. You can also skip the raion and specify a city only.",
+        "description": "Pick a raion from the list, or skip to monitor the whole oblast. If the raion has no cities with known coordinates, the city step is skipped.",
         "data": {
           "raion": "Select a raion"
+        }
+      },
+      "city": {
+        "title": "Radar UA — {raion}",
+        "description": "Pick a city in the \"{raion}\" raion ({region}) — the reference point for the distance-to-nearest-threat sensor. Skip if you do not need it.",
+        "data": {
+          "reference_city_id": "Select a city"
         }
       }
     },
     "error": {
       "cannot_connect": "Failed to connect to the data server.",
-      "invalid_region": "That oblast is not in the data source region list."
+      "invalid_region": "That oblast is not in the data source region list.",
+      "invalid_city": "The selected city does not belong to the selected raion."
     },
     "abort": {
       "already_configured": "This oblast is already configured."
@@ -28,14 +36,23 @@
     "step": {
       "init": {
         "title": "Radar UA — options",
-        "description": "Polling interval. Entities become unavailable when data is older than {unavailable_after} s.",
+        "description": "Polling interval and raion. Entities become unavailable when data is older than {unavailable_after} s.",
         "data": {
-          "scan_interval": "Polling interval (seconds, 5-3600)"
+          "scan_interval": "Polling interval (seconds, 5-3600)",
+          "raion": "Select a raion"
+        }
+      },
+      "city": {
+        "title": "Radar UA — {raion}",
+        "description": "Pick a city in the \"{raion}\" raion ({region}) — the reference point for the distance-to-nearest-threat sensor. Skip if you do not need it.",
+        "data": {
+          "reference_city_id": "Select a city"
         }
       }
     },
     "error": {
-      "invalid_scan_interval": "The interval must be an integer between 5 and 3600 seconds."
+      "invalid_scan_interval": "The interval must be an integer between 5 and 3600 seconds.",
+      "invalid_city": "The selected city does not belong to the selected raion."
     }
   },
   "entity": {
@@ -74,6 +91,9 @@
       },
       "data_age": {
         "name": "Data age"
+      },
+      "distance": {
+        "name": "Distance to nearest threat"
       }
     },
     "binary_sensor": {
