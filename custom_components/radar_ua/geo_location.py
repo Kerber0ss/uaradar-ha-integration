@@ -12,6 +12,7 @@ from homeassistant.helpers import entity_registry
 from .const import (
     CONF_CITY,
     CONF_RAION,
+    CONF_REFERENCE_CITY_ID,
     CONF_REGION,
     DOMAIN,
     THREAT_BALLISTIC,
@@ -23,7 +24,7 @@ from .const import (
 )
 from .coordinator import RadarUaDataUpdateCoordinator
 from .entity import RadarUaEntity, device_info_for
-from .filters import scoped_region_threats
+from .filters import scoped_threats
 
 THREAT_ICONS = {
     THREAT_UAV: "mdi:quadcopter",
@@ -184,11 +185,12 @@ async def async_setup_entry(
         """Active threats by id, with the region key they were found in."""
         found: dict[str, tuple[dict[str, Any], str]] = {}
         for region_key in region_keys():
-            for threat in scoped_region_threats(
+            for threat in scoped_threats(
                 coordinator.data,
                 region_key,
                 entry.data.get(CONF_RAION),
                 entry.data.get(CONF_CITY),
+                entry.data.get(CONF_REFERENCE_CITY_ID),
             ):
                 threat_id = threat.get("id")
                 if threat_id is None:

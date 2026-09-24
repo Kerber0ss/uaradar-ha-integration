@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from typing import Any
 
@@ -11,7 +12,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory, UnitOfTime
+from homeassistant.const import EntityCategory, UnitOfLength, UnitOfTime
 
 from .const import ATTR_UPDATED
 from homeassistant.util import dt as dt_util
@@ -19,15 +20,18 @@ from homeassistant.util import dt as dt_util
 from .const import (
     CONF_CITY,
     CONF_RAION,
+    CONF_REFERENCE_CITY_ID,
     LEVEL_GREEN,
     LEVEL_RED,
     LEVEL_YELLOW,
     THREAT_MIG31K,
 )
-from .filters import alert_for_scope
 from .coordinator import RadarUaDataUpdateCoordinator
 from .entity import RadarUaEntity
-from .parsing import counts_for_threats, sum_threat_units
+from .filters import alert_for_scope
+from .geo.boundaries import great_circle_distance_km
+from .geo.cities import city_by_id
+from .parsing import counts_for_threats, is_area_only, sum_threat_units, threat_coordinates
 
 ICON_LEVEL = {
     LEVEL_RED: "mdi:alert-octagon",
@@ -176,6 +180,98 @@ class RadarUaDataAgeSensor(RadarUaSensor):
         return attrs
 
 
+class RadarUaDistanceSensor(RadarUaSensor):
+    """Distance from the reference city to the nearest located threat.
+
+    Created only for entries with a resolvable ``reference_city_id``. The
+    city is a distance anchor only: it never narrows threats by name. Only
+    threats with valid finite coordinates count; ``areaOnly`` centroid
+    markers and destination points are excluded. No suitable threat ->
+    ``unknown`` (None); stale data -> ``unavailable`` via the shared base.
+    """
+
+    _attr_device_class = SensorDeviceClass.DISTANCE
+    _attr_native_unit_of_measurement = UnitOfLength.KILOMETERS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 1
+    _attr_translation_key = "distance"
+    _attr_icon = "mdi:map-marker-distance"
+
+    def __init__(
+        self,
+        coordinator: RadarUaDataUpdateCoordinator,
+        entry: ConfigEntry,
+        region_key: str,
+        city: dict[str, Any],
+    ) -> None:
+        """Initialize with the resolved reference city (id/name/coords)."""
+        super().__init__(coordinator, entry, region_key, "distance")
+        self._city = city
+        self._city_id = str(city.get("id") or "")
+        self._city_lat = float(city["lat"])
+        self._city_lon = float(city["lon"])
+
+    @property
+    def _candidates(self) -> list[tuple[float, dict[str, Any]]]:
+        """(distance_km, threat) for located, non-areaOnly active threats."""
+        candidates: list[tuple[float, dict[str, Any]]] = []
+        for threat in self.active_threats:
+            if not isinstance(threat, dict) or is_area_only(threat):
+                continue
+            coordinates = threat_coordinates(threat)
+            if coordinates is None:
+                continue
+            lat, lon = coordinates
+            if not (math.isfinite(lat) and math.isfinite(lon)):
+                continue
+            distance = great_circle_distance_km(
+                self._city_lat, self._city_lon, lat, lon
+            )
+            candidates.append((distance, threat))
+        return candidates
+
+    @property
+    def native_value(self) -> float | None:
+        """Nearest great-circle distance in km, or None (unknown)."""
+        nearest = self._nearest
+        return round(nearest[0], 1) if nearest else None
+
+    @property
+    def _nearest(self) -> tuple[float, dict[str, Any]] | None:
+        """Nearest candidate; ties broken by stable threat id."""
+        best: tuple[float, dict[str, Any]] | None = None
+        for candidate in self._candidates:
+            if (
+                best is None
+                or candidate[0] < best[0]
+                or (
+                    candidate[0] == best[0]
+                    and str(candidate[1].get("id")) < str(best[1].get("id"))
+                )
+            ):
+                best = candidate
+        return best
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Reference city and details of the nearest threat."""
+        attrs = dict(super().extra_state_attributes)
+        attrs["reference_city_id"] = self._city_id
+        attrs["reference_city"] = self._city.get("name")
+        nearest = self._nearest
+        if nearest is not None:
+            distance, threat = nearest
+            attrs["threat_id"] = threat.get("id")
+            attrs["threat_type"] = threat.get("type")
+            locality = threat.get("locality")
+            if locality:
+                attrs["locality"] = locality
+            uncertainty = threat.get("uncertaintyKm")
+            if isinstance(uncertainty, (int, float)):
+                attrs["uncertaintyKm"] = uncertainty
+        return attrs
+
+
 def _counts_value(source: list[dict[str, Any]] | None, *types: str) -> int:
     """Sum direct-API threat units by type."""
     return sum_threat_units(source, *types)
@@ -200,83 +296,93 @@ async def async_setup_entry(
     coordinator: RadarUaDataUpdateCoordinator = entry.runtime_data
     region_key: str = entry.data["region"]
 
-    async_add_entities(
-        [
-            RadarUaLevelSensor(coordinator, entry, region_key, entry.data.get(CONF_RAION)),
-            RadarUaAlertSinceSensor(coordinator, entry, region_key, entry.data.get(CONF_RAION)),
-            RadarUaCountsSensor(
-                coordinator,
-                entry,
-                region_key,
-                "drones",
-                "drones",
-                "mdi:quadcopter",
-                lambda coordinator_, threats: _counts_value(
-                    threats, "uav", "fpv"
-                ),
+    entities: list[RadarUaSensor] = [
+        RadarUaLevelSensor(coordinator, entry, region_key, entry.data.get(CONF_RAION)),
+        RadarUaAlertSinceSensor(coordinator, entry, region_key, entry.data.get(CONF_RAION)),
+        RadarUaCountsSensor(
+            coordinator,
+            entry,
+            region_key,
+            "drones",
+            "drones",
+            "mdi:quadcopter",
+            lambda coordinator_, threats: _counts_value(
+                threats, "uav", "fpv"
             ),
-            RadarUaCountsSensor(
-                coordinator,
-                entry,
-                region_key,
-                "recon",
-                "recon",
-                "mdi:drone",
-                lambda coordinator_, threats: _counts_value(
-                    threats, "recon"
-                ),
+        ),
+        RadarUaCountsSensor(
+            coordinator,
+            entry,
+            region_key,
+            "recon",
+            "recon",
+            "mdi:drone",
+            lambda coordinator_, threats: _counts_value(
+                threats, "recon"
             ),
-            RadarUaCountsSensor(
-                coordinator,
-                entry,
-                region_key,
-                "missiles",
-                "missiles",
-                "mdi:rocket-launch",
-                lambda coordinator_, threats: _counts_value(
-                    threats, "missile", "ballistic"
-                ),
+        ),
+        RadarUaCountsSensor(
+            coordinator,
+            entry,
+            region_key,
+            "missiles",
+            "missiles",
+            "mdi:rocket-launch",
+            lambda coordinator_, threats: _counts_value(
+                threats, "missile", "ballistic"
             ),
-            RadarUaCountsSensor(
-                coordinator,
-                entry,
-                region_key,
-                "kab",
-                "kab",
-                "mdi:bomb",
-                lambda coordinator_, threats: _counts_value(
-                    threats, "kab"
-                ),
+        ),
+        RadarUaCountsSensor(
+            coordinator,
+            entry,
+            region_key,
+            "kab",
+            "kab",
+            "mdi:bomb",
+            lambda coordinator_, threats: _counts_value(
+                threats, "kab"
             ),
-            RadarUaCountsSensor(
-                coordinator,
-                entry,
-                region_key,
-                "mig31k",
-                "mig31k",
-                "mdi:airplane-alert",
-                lambda coordinator_, threats: _counts_value(
-                    threats, THREAT_MIG31K
-                ),
+        ),
+        RadarUaCountsSensor(
+            coordinator,
+            entry,
+            region_key,
+            "mig31k",
+            "mig31k",
+            "mdi:airplane-alert",
+            lambda coordinator_, threats: _counts_value(
+                threats, THREAT_MIG31K
             ),
-            RadarUaCountsSensor(
-                coordinator,
-                entry,
-                region_key,
-                "total",
-                "total",
-                "mdi:crosshairs-gps",
-                lambda coordinator_, source: _total_value(source),
-            ),
-            RadarUaCountsSensor(
-                coordinator,
-                entry,
-                region_key,
-                "raid_size",
-                "raid_size",
-                "mdi:chart-bell-curve",
-                lambda coordinator_, source: _raid_size_value(source),
-            ),
-            RadarUaDataAgeSensor(coordinator, entry, region_key),
-        ]
-    )
+        ),
+        RadarUaCountsSensor(
+            coordinator,
+            entry,
+            region_key,
+            "total",
+            "total",
+            "mdi:crosshairs-gps",
+            lambda coordinator_, source: _total_value(source),
+        ),
+        RadarUaCountsSensor(
+            coordinator,
+            entry,
+            region_key,
+            "raid_size",
+            "raid_size",
+            "mdi:chart-bell-curve",
+            lambda coordinator_, source: _raid_size_value(source),
+        ),
+        RadarUaDataAgeSensor(coordinator, entry, region_key),
+    ]
+    # Distance sensor: only for entries with a resolvable reference city.
+    city_id = entry.data.get(CONF_REFERENCE_CITY_ID)
+    city = city_by_id(city_id) if isinstance(city_id, str) else None
+    if (
+        city is not None
+        and isinstance(city.get("lat"), (int, float))
+        and isinstance(city.get("lon"), (int, float))
+    ):
+        entities.append(
+            RadarUaDistanceSensor(coordinator, entry, region_key, city)
+        )
+    async_add_entities(entities)

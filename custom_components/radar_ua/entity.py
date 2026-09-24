@@ -16,10 +16,11 @@ from .const import (
     CONF_CITY,
     CONF_RAION,
     CONF_REGION,
+    CONF_REFERENCE_CITY_ID,
     DOMAIN,
 )
 from .coordinator import RadarUaDataUpdateCoordinator
-from .filters import region_name, scoped_region_threats
+from .filters import region_name, scoped_threats
 from .raions import REGION_NAMES_UK
 
 
@@ -80,12 +81,17 @@ class RadarUaEntity(CoordinatorEntity[RadarUaDataUpdateCoordinator], Entity):
 
     @property
     def active_threats(self) -> list[dict[str, Any]]:
-        """Active threats limited to this entry's configured raion/city."""
-        return scoped_region_threats(
+        """Active threats limited to this entry's configured raion/city.
+
+        Region scoping by oblast stays first; raion membership and the
+        legacy-city narrowing rules live in the shared filters.scoped_threats.
+        """
+        return scoped_threats(
             self.coordinator.data,
             self.region_key,
             self.entry.data.get(CONF_RAION),
             self.entry.data.get(CONF_CITY),
+            self.entry.data.get(CONF_REFERENCE_CITY_ID),
         )
 
     @property

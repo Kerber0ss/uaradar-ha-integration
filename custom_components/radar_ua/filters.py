@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .geo.boundaries import point_in_raion
+from .parsing import is_area_only, threat_coordinates
 from .raions import REGION_NAMES_UK
 
 RESOLVED_STATUS = "resolved"
@@ -48,6 +50,30 @@ def _matches_raion(item: dict[str, Any], raion: str) -> bool:
         substring_match(item.get(field), raion)
         for field in ("district", "name")
     )
+
+
+def threat_in_raion(threat: dict[str, Any], raion: str | None) -> bool:
+    """Whether one threat belongs to the configured raion (shared membership).
+
+    Counters, map, events and the distance sensor all use this so a target
+    over e.g. Krolevets is consistently seen as inside Konotopskyi raion.
+    Order: the reliable NEPTUN raion identifier first (``regionKey``/``key``,
+    then display-name fallbacks); if the text check fails but the threat has
+    valid numeric coordinates and is not an ``areaOnly`` centroid marker,
+    fall back to a geometric point-in-raion test against the local boundary
+    snapshot. The ``locality`` name is deliberately NOT used as a position:
+    it may denote a direction or a destination, not where the target is.
+    """
+    if not raion or not isinstance(threat, dict):
+        return False
+    if _matches_raion(threat, raion):
+        return True
+    if is_area_only(threat):
+        return False
+    coordinates = threat_coordinates(threat)
+    if coordinates is None:
+        return False
+    return point_in_raion(coordinates[0], coordinates[1], raion)
 
 
 def raion_alerts(data: dict[str, Any], region_key: str, raion: str) -> list[dict[str, Any]]:
@@ -105,7 +131,7 @@ def filtered_threats(
     for threat in threats:
         if not isinstance(threat, dict) or threat.get("status") == RESOLVED_STATUS:
             continue
-        if raion and not _matches_raion(threat, raion):
+        if raion and not threat_in_raion(threat, raion):
             continue
         if city and not any(
             substring_match(threat.get(field), city)
@@ -124,3 +150,38 @@ def scoped_region_threats(
 ) -> list[dict[str, Any]]:
     """Return active direct-API threats limited to this integration entry."""
     return filtered_threats(data, region_threats(data, region_key), raion, city)
+
+
+def scoped_threats(
+    data: dict[str, Any],
+    region_key: str,
+    raion: str | None = None,
+    city: str | None = None,
+    reference_city_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Active direct-API threats for one config entry's scope (shared view).
+
+    Counters, map, events and the distance sensor all use this so they see
+    the same threats. Region scoping by oblast stays first, then the shared
+    raion membership (NEPTUN key or geometric point-in-raion). The legacy
+    free-text ``city`` narrows results exactly as before, but only for
+    entries without a reference city: the reference city is a distance
+    anchor, never a name filter.
+    """
+    threats = [
+        threat
+        for threat in region_threats(data, region_key)
+        if isinstance(threat, dict)
+    ]
+    if raion:
+        threats = [threat for threat in threats if threat_in_raion(threat, raion)]
+    if city and not reference_city_id:
+        threats = [
+            threat
+            for threat in threats
+            if any(
+                substring_match(threat.get(field), city)
+                for field in ("district", "locality", "region")
+            )
+        ]
+    return threats
