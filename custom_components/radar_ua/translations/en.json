@@ -91,6 +91,9 @@
       },
       "data_age": {
         "name": "Data age"
+      },
+      "distance": {
+        "name": "Distance to nearest threat"
       }
     },
     "binary_sensor": {
